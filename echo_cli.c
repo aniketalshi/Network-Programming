@@ -4,6 +4,20 @@
 #include <string.h>
 #include "unp.h"
 
+void echo_fun(FILE *fp, int sockt_fd) {
+
+    char send_line[MAXLINE], recv_line[MAXLINE];
+    
+    while(Fgets(send_line, MAXLINE, fp) != NULL) {
+        
+        Writen(sockt_fd, send_line, strlen(send_line));
+        if(Readline(sockt_fd, recv_line, MAXLINE) == 0)
+            err_quit("Server terminated");
+    
+        Fputs(recv_line, stdout);
+    }
+}
+
 int main(int argc, char* argv[]) {
 
     int sockt_fd, r;
@@ -21,12 +35,11 @@ int main(int argc, char* argv[]) {
         exit(EXIT_FAILURE);
     }
    
-    
     // zero out the serveraddr struct and initialize it
     memset(&server_addr, 0, sizeof(server_addr));
     memset(recv_line, 0, sizeof(recv_line));
     server_addr.sin_family = AF_INET;
-    server_addr.sin_port   = htons(5000); 
+    server_addr.sin_port   = htons(5200); 
     
     if (inet_pton(AF_INET, argv[1], &server_addr.sin_addr) <= 0)
         err_quit("Invalid address %s specified", argv[1]);
@@ -34,16 +47,8 @@ int main(int argc, char* argv[]) {
     //connect to server
     Connect (sockt_fd, (SA *) &server_addr, sizeof(server_addr));
 
-    //read from server
-    while ((r = read (sockt_fd, recv_line, sizeof(recv_line)-1)) > 0) {
-        recv_line[r] = '0';
-        if (fputs(recv_line, stdout) == EOF) 
-            err_sys("output error");
-    }
-
-    if (r < 0)
-        err_sys("read error");
-
-    return  0;
+    echo_fun(stdin, sockt_fd);
+    
+    return 0;
 }
-
+    

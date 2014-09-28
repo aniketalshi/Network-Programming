@@ -4,10 +4,12 @@
 #include <string.h>
 #include <arpa/inet.h>
 #include "unp.h"
+#include "readline.h"
 
 void echo_fun(int sock_fd) {
     int n;
     char buf[MAXLINE];
+    
 
     while(1) {
         while((n = read(sock_fd, buf, MAXLINE)) > 0) 
@@ -21,6 +23,20 @@ void echo_fun(int sock_fd) {
         }
     }
 }
+
+void sig_child_handler(int sig_no) {
+    pid_t pid;
+    int status;
+    
+    /* call waitpid to wait on any exiting process 
+     * WNOHANG says the call should not be blocking
+     */
+    while((pid = waitpid(-1, &status, WNOHANG)) > 0) {
+        printf("Child %d terminated \n", pid);
+    }
+    return;
+}
+
 
 int main(int argc, char **argv)
 {
@@ -42,21 +58,27 @@ int main(int argc, char **argv)
 
     bind (listenfd, (SA *)&servaddr, sizeof(servaddr));
     listen(listenfd, LISTENQ);
+    
+    Signal (SIGCHLD, sig_child_handler);
 
     for ( ; ; ) {
         len = sizeof(cli_addr);
         memset (&cli_addr, 0, sizeof(cli_addr));
         
         if ((connfd = Accept (listenfd, (SA *) &cli_addr, &len)) < 0) {
-            fprintf(stderr, "Error accepting connection %s", strerror(errno));
+            /* If child exits and SIGCHILD signal handler returns in middle
+             * of Accept syscall, EINTR is recieved, then restart the syscall
+             */
+            if (errno == EINTR) 
+                continue;
+            
+            perror("Error accepting connection \n");
             exit(EXIT_FAILURE);
         }
-        // printf("DEBUG connfd: %d\n", connfd);
         
         if((pid = Fork()) == 0) {  // child process
-            // close the listening socket 
+            // close the listening socket and proces connection
             close(listenfd); 
-            // process the connection socket  
             echo_fun(connfd);
             exit(0);
         }

@@ -17,10 +17,9 @@ int main(int argc, char* argv[]) {
     
     // open a ipv4, stream socket  
     if ( (sockt_fd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
-        fprintf(stderr, "Error creating socket %s", strerror(errno));
+        perror("Error creating socket \n");
         exit(EXIT_FAILURE);
     }
-   
     
     // zero out the serveraddr struct and initialize it
     memset(&server_addr, 0, sizeof(server_addr));

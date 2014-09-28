@@ -10,7 +10,6 @@ void echo_fun(int sock_fd) {
     int n;
     char buf[MAXLINE];
     
-
     while(1) {
         while((n = read(sock_fd, buf, MAXLINE)) > 0) 
             Writen(sock_fd, buf, n);
@@ -77,7 +76,7 @@ int main(int argc, char **argv)
         }
         
         if((pid = Fork()) == 0) {  // child process
-            // close the listening socket and proces connection
+            // close the listening socket and process connection
             close(listenfd); 
             echo_fun(connfd);
             exit(0);

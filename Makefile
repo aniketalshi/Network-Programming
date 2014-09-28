@@ -6,8 +6,12 @@ LIBS = -lresolv -lnsl -lpthread\
 FLAGS = -g -O2 -lm
 CFLAGS = ${FLAGS} -I /home/stufs1/aalshi/cse533/stevens/unpv13e/lib/
 
-all: client time_cli time_srv echo_srv echo_cli
+all: client server time_cli time_srv echo_srv echo_cli
 
+server: server.o
+	${CC} ${FLAGS} -o server server.o ${LIBS}
+server.o: server.c
+	${CC} ${CFLAGS} -c server.c
 
 client: client.o
 	${CC} ${FLAGS} -o client client.o ${LIBS}
@@ -40,5 +44,5 @@ echo_cli.o: echo_cli.c
 .PHONY : clean
 clean: 
 	rm time_cli time_srv time_cli.o readline.o \
-	time_srv.o echo_cli.o echo_srv.o client.o
+	time_srv.o echo_cli.o echo_srv.o client.o server.o
 

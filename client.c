@@ -5,8 +5,9 @@
 #include <netinet/in.h> 
 #include "unp.h"
 
+enum type {ECHO_CLI, TIME_CLI};
 
-void start_echocli() {
+void start_echocli (int type) {
     int fd[2], status;
     pipe(fd);
    
@@ -14,7 +15,6 @@ void start_echocli() {
     
     char buf[5];
     snprintf(buf, sizeof(buf), "%d",fd[1]);
-
 
     fd_set fdset;
     FD_ZERO(&fdset);
@@ -24,51 +24,51 @@ void start_echocli() {
         case 0 : { // child process
             close(fd[0]);
             
-            // exec the echo client in another xterm window
-            if ( (execlp("xterm", "xterm", "-hold", "-e", 
-                                "./echo_cli", "127.0.0.1", (char *)buf, (char *) 0)) < 0)  {
-                    exit(1);
+            if (type == TIME_CLI) {
+                if ( (execlp("xterm", "xterm", "-hold", "-e", 
+                                    "./time_cli", "127.0.0.1", (char *)buf, (char *) 0)) < 0)  {
+                        exit(1);
+                }
+            } else if (type == ECHO_CLI) {
+                // exec the echo client in another xterm window
+                if ( (execlp("xterm", "xterm", "-hold", "-e", 
+                                    "./echo_cli", "127.0.0.1", (char *)buf, (char *) 0)) < 0)  {
+                        exit(1);
+                }
             }
             break;
         }
 
         default : { // parent process
             close(fd[1]);
-                while(1) { 
-                    FD_SET(fileno(stdin), &fdset);                
-                    FD_SET(fd[0], &fdset);
+            while(1) { 
+                FD_SET(fileno(stdin), &fdset);                
+                FD_SET(fd[0], &fdset);
 
-                    
-                    // monitor stdin and status message from client
-                    select (max(fileno(stdin) ,fd[0]) + 1, &fdset,
-                                                    NULL, NULL, NULL);
-                    
-                    if (FD_ISSET(fileno(stdin), &fdset)) {
-                        memset(recv_buf, 0, MAXLINE); 
-                        Readline (fileno(stdin), recv_buf, MAXLINE);
-                        
-                        printf("Usage: Type in echo client window \n");
-                    }
-
-                    if (FD_ISSET(fd[0], &fdset)) {
-                        memset(recv_buf, 0, MAXLINE); 
-                        if (Readline (fd[0], recv_buf, MAXLINE) == 0)
-                            err_quit("Error reading status from client\n");
-
-                        // check if client is done
-                        if (strcmp(recv_buf, "Done") == 0) {
-                            if ((pid = waitpid(-1, &status, 0)) > 0)
-                                printf("Child %d terminated \n", pid);
-                            break;
-                        } 
-                    }
+                // monitor stdin and status message from client
+                select (max(fileno(stdin) ,fd[0]) + 1, &fdset,
+                                                NULL, NULL, NULL);
+                
+                if (FD_ISSET(fileno(stdin), &fdset)) {
+                    memset(recv_buf, 0, MAXLINE); 
+                    Readline (fileno(stdin), recv_buf, MAXLINE);
+                    printf("Usage: Type in echo client window \n");
                 }
+
+                if (FD_ISSET(fd[0], &fdset)) {
+                    memset(recv_buf, 0, MAXLINE); 
+                    if (Readline (fd[0], recv_buf, MAXLINE) == 0)
+                        err_quit("Error reading status from client\n");
+
+                    // check if client is done
+                    if (strcmp(recv_buf, "Done") == 0) {
+                        if ((pid = waitpid(-1, &status, 0)) > 0)
+                            printf("close status sent on pipe child %d terminated\n", pid);
+                        break;
+                    } 
+                }
+            }
             close(fd[0]);
-            
-            //while((pid = waitpid(-1, &status, WNOHANG)) > 0) {
-            //    printf("Child %d terminated \n", pid); 
-            //}
-            
             break;
         }
 
@@ -92,12 +92,12 @@ int main(int argc, char* argv[]) {
         scanf("%d", &inp); 
         switch(inp) {
             case 1: {
-                start_echocli();
+                start_echocli(ECHO_CLI);
                 break;
             }
 
             case 2: {
-                return 0;
+                start_echocli(TIME_CLI);
                 break;
             }
 

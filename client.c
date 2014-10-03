@@ -67,9 +67,9 @@ void start_echocli (int type, char *str) {
                             printf("Child %d terminated successfully.\n", pid);
                         break;
                     }
+                    // print out status message by client
+                    fputs (recv_buf, stdout);
                 } 
-                // print out status message by client
-                // fputs (recv_buf, stdout);
             }
             close(fd[0]);
             break;

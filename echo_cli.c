@@ -12,10 +12,6 @@ void echo_fun(FILE *fp, int sockt_fd, char *srv_ip) {
     fd_set fdset;
     FD_ZERO(&fdset);
     
-    //snprintf(buf, 100, "Connected to server %s", srv_ip);
-    //write (parent_fd, buf, strlen(buf));
-    //fputs (buf, stdout);
-    
     while(1) {
         FD_SET (fileno(fp), &fdset);
         FD_SET (sockt_fd, &fdset);
@@ -51,11 +47,36 @@ void sig_int_handler (int signo){
     exit(EXIT_SUCCESS); 
 }
 
+int get_hostname(char *str, struct in_addr ipv4addr) {
+
+    char buf[MAXLINE]; 
+    struct hostent *hnet;
+    struct in_addr **addr_list;
+
+    if ((hnet = gethostbyname(str)) != NULL) {
+       addr_list = (struct in_addr **)hnet->h_addr_list; 
+       ipv4addr = *addr_list[0]; 
+    } else {
+        inet_pton(AF_INET, str, &ipv4addr);
+        if ((hnet = gethostbyaddr(&ipv4addr, sizeof(ipv4addr), AF_INET)) == NULL) {
+            return -1;
+        }
+    }
+    
+    snprintf(buf, MAXLINE, "The Server is %s \t ip address: %s\n", 
+                                            hnet->h_name, inet_ntoa(ipv4addr));
+    printf("%s\n", buf);
+    write(parent_fd, buf, strlen(buf));
+    return 0;
+}
+
+
 int main(int argc, char* argv[]) {
 
     int sockt_fd, sock_flags, r;
     socklen_t sklen;
     struct sockaddr_in server_addr;
+    struct in_addr ipv4addr;
 
     // check if user entered ip address 
     if (argc < 2) {
@@ -67,7 +88,13 @@ int main(int argc, char* argv[]) {
     if(argv[2] == NULL) 
         exit(EXIT_FAILURE);
         
-    parent_fd = atoi(argv[2]);
+    if(argv[2])
+        parent_fd = atoi(argv[2]);
+   
+    if (get_hostname(argv[1], ipv4addr) < 0) {
+        perror("error in ipaddress/hostname"); 
+        exit(EXIT_FAILURE);
+    }
     
     // open a ipv4, stream socket  
     if ( (sockt_fd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
@@ -77,11 +104,9 @@ int main(int argc, char* argv[]) {
 
     // zero out the serveraddr struct and initialize it
     memset(&server_addr, 0, sizeof(server_addr));
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_port   = htons(5200); 
-
-    if (inet_pton(AF_INET, argv[1], &server_addr.sin_addr) <= 0)
-        err_quit("Invalid address %s specified", argv[1]);
+    server_addr.sin_family  = AF_INET;
+    server_addr.sin_port    = htons(5200); 
+    server_addr.sin_addr    = ipv4addr;
 
     // register signal handler to catch SIGINT 
     signal (SIGINT, sig_int_handler);
@@ -100,7 +125,6 @@ int main(int argc, char* argv[]) {
             exit(EXIT_FAILURE);
 
     echo_fun(stdin, sockt_fd, argv[1]);
-
     return 0;
 }
 

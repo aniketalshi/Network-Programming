@@ -6,11 +6,15 @@
 
 int parent_fd;
 
-void echo_fun(FILE *fp, int sockt_fd) {
+void echo_fun(FILE *fp, int sockt_fd, char *srv_ip) {
 
-    char send_line[MAXLINE], recv_line[MAXLINE];
+    char send_line[MAXLINE], recv_line[MAXLINE], buf[100];
     fd_set fdset;
     FD_ZERO(&fdset);
+    
+    //snprintf(buf, 100, "Connected to server %s", srv_ip);
+    //write (parent_fd, buf, strlen(buf));
+    //fputs (buf, stdout);
     
     while(1) {
         FD_SET (fileno(fp), &fdset);
@@ -37,7 +41,7 @@ void echo_fun(FILE *fp, int sockt_fd) {
             if (Readline(sockt_fd, recv_line, MAXLINE) == 0)
                 err_quit("Server terminated, Recvd FIN\n");
             // write output from buf to stdout
-            Fputs (recv_line, stdout);
+            fputs (recv_line, stdout);
         }
     }
 }
@@ -49,10 +53,9 @@ void sig_int_handler (int signo){
 
 int main(int argc, char* argv[]) {
 
-    int sockt_fd, r;
+    int sockt_fd, sock_flags, r;
     socklen_t sklen;
     struct sockaddr_in server_addr;
-    char recv_line[MAXLINE + 1];
 
     // check if user entered ip address 
     if (argc < 2) {
@@ -60,8 +63,11 @@ int main(int argc, char* argv[]) {
         exit(EXIT_FAILURE);
     }
     
-    if(argv[2])
-        parent_fd = atoi(argv[2]);
+    // if pipe is not set by parent exit
+    if(argv[2] == NULL) 
+        exit(EXIT_FAILURE);
+        
+    parent_fd = atoi(argv[2]);
     
     // open a ipv4, stream socket  
     if ( (sockt_fd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
@@ -71,7 +77,6 @@ int main(int argc, char* argv[]) {
 
     // zero out the serveraddr struct and initialize it
     memset(&server_addr, 0, sizeof(server_addr));
-    memset(recv_line, 0, sizeof(recv_line));
     server_addr.sin_family = AF_INET;
     server_addr.sin_port   = htons(5200); 
 
@@ -79,12 +84,22 @@ int main(int argc, char* argv[]) {
         err_quit("Invalid address %s specified", argv[1]);
 
     // register signal handler to catch SIGINT 
-    Signal (SIGINT, sig_int_handler);
+    signal (SIGINT, sig_int_handler);
+   
+    // make socket fd non blocking
+    if ((sock_flags = fcntl(sockt_fd, F_GETFL, 0) == -1) ||
+        (fcntl(sockt_fd, F_SETFL, sock_flags | O_NONBLOCK) == -1)) {
+        
+        perror("fcntl Error");
+        exit(EXIT_FAILURE);
+    }
     
-    // connect to server
-    Connect (sockt_fd, (SA *) &server_addr, sizeof(server_addr));
+    // Non blocking connect call
+    if (connect (sockt_fd, (SA *) &server_addr, sizeof(server_addr)) < 0)
+        if(errno != EINPROGRESS)
+            exit(EXIT_FAILURE);
 
-    echo_fun(stdin, sockt_fd);
+    echo_fun(stdin, sockt_fd, argv[1]);
 
     return 0;
 }

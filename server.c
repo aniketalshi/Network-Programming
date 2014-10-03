@@ -1,33 +1,52 @@
 #include <stdio.h>
 #include <sys/socket.h>
+#include <fcntl.h>
 #include <netinet/in.h> 
 #include <string.h>
 #include <arpa/inet.h>
 #include "unp.h"
 #include "readline.h"
 
-
-
 void *echo_client(void *value) {
 
     struct sockaddr_in cli_addr;
-    int	connfd, n;
+    int	connfd, n, conn_flags;
     int listenfd = *(int *)value;
-
 
     char buf[MAXLINE];
     time_t ticks;
     socklen_t len;
     pid_t pid;
 
-    fd_set fdset;
-    FD_ZERO(&fdset);
-
     len = sizeof(cli_addr);
     memset (&cli_addr, 0, sizeof(cli_addr));
+   
+    /* accept will fail if no connection as socket is 
+     * nonblocking. So retry if failed with EWOULDBLOCK
+     */
+    while(1) { 
+        if ((connfd = accept (listenfd, (SA *) &cli_addr, &len)) < 0) {
+            if(errno == EWOULDBLOCK || errno == EAGAIN) {
+                continue;
+           } else {
+                perror("Error accepting connection \n");
+                exit(EXIT_FAILURE);
+            }
+        }
+        break;
+    }
+
+    if ((conn_flags = fcntl(connfd, F_GETFL, 0) == -1)) {
+        perror("fcntl F_GETFL Error");
+        exit(EXIT_FAILURE);
+    }
+    /* listen socket is non-blocking. Connection socket 
+     * will inherit its properties. We need to make it blocking
+     */
+    conn_flags &= ~O_NONBLOCK;    
     
-    if ((connfd = Accept (listenfd, (SA *) &cli_addr, &len)) < 0) {
-        perror("Error accepting connection \n");
+    if (fcntl(connfd, F_SETFL, conn_flags) == -1 ) {
+        perror("fcntl F_SETFL Error");
         exit(EXIT_FAILURE);
     }
 
@@ -38,41 +57,66 @@ void *echo_client(void *value) {
         if (n < 0 && errno == EINTR) {
             continue;
         } else if (n < 0) {
-            fprintf(stderr, "Error reading %s", strerror(errno));
+            perror("Error reading"); 
             break;
         }
     }
+    close(connfd);
     pthread_exit(value);
 
 }
 
-
-
 void *time_client(void* value) {
     
     struct sockaddr_in cli_addr;
-    int	connfd;
-    int listenfd = *(int *)value;
-
-    char buff[MAXLINE], recv_line[MAXLINE];
+    int	connfd, conn_flags;
     time_t ticks;
-    socklen_t len;
     struct timeval tt;
     pid_t pid;
+
+    char buff[MAXLINE], recv_line[MAXLINE], str[INET_ADDRSTRLEN];
 
     fd_set fdset;
     FD_ZERO(&fdset);
     
-    len = sizeof(cli_addr);
+    int listenfd   = *(int *)value;
+    socklen_t len  = sizeof(cli_addr);
     memset (&cli_addr, 0, sizeof(cli_addr));
     
-    if ((connfd = Accept (listenfd, (SA *) &cli_addr, &len)) < 0) {
-        fprintf(stderr, "Error accepting connection %s", strerror(errno));
-        exit(EXIT_FAILURE);
+    /* accept will fail if no connection as socket is 
+     * nonblocking. So retry if failed with EWOULDBLOCK
+     */
+    while(1) { 
+        if ((connfd = accept (listenfd, (SA *) &cli_addr, &len)) < 0) {
+            if(errno == EWOULDBLOCK || errno == EAGAIN) {
+                continue;
+           } else {
+                perror("Error accepting connection \n");
+                exit(EXIT_FAILURE);
+            }
+        }
+        break;
     }
     
+    if ((conn_flags = fcntl(listenfd, F_GETFL, 0) == -1)) {
+        perror("fcntl F_GETFL Error");
+        exit(EXIT_FAILURE);
+    }
+    /* listen socket is non-blocking. Connection socket 
+     * will inherit its properties. We need to make it blocking
+     */
+    conn_flags &= ~O_NONBLOCK;    
+    
+    if (fcntl(listenfd, F_SETFL, conn_flags) == -1 ) {
+        perror("fcntl F_SETFL Error");
+        exit(EXIT_FAILURE);
+    }
+   
+    // get client ip addr
+    inet_ntop (AF_INET, &(cli_addr.sin_addr), str, INET_ADDRSTRLEN);
+    
     while(1) {
-        tt.tv_sec = 1;
+        tt.tv_sec = 2;
         FD_SET (connfd, &fdset);
         
         /* Select call to check if FIN is received from client
@@ -80,30 +124,26 @@ void *time_client(void* value) {
          */
         select (connfd + 1,&fdset, NULL, NULL, &tt);
         
+        /* if recieved a zero length message on socket
+         *  client sent the fin, close the connection
+         */
         if (FD_ISSET(connfd, &fdset)) {
             if (Readline(connfd, recv_line, MAXLINE) == 0) {
-                printf("Received FIN \n");
+                printf("connection closed by the client %s \n", str);
                 close(connfd);
                 pthread_exit(value);
-                exit(0);
+                exit(EXIT_SUCCESS);
             }
         }
         
-        /* TODO: sleep not working here
-         * Displaying 20 ticks before checking for FIN 
-         */
-        int tim = 20;
-        while(tim) {
-            ticks = time(NULL);
-            snprintf(buff, sizeof(buff), "%.24s\r\n", ctime(&ticks));
-            write(connfd, buff, strlen(buff));
-            tim--;
-        }
+        // write the time on the socket
+        ticks = time(NULL);
+        snprintf(buff, sizeof(buff), "%.24s\r\n", ctime(&ticks));
+        write(connfd, buff, strlen(buff));
     }
-        
+    close(connfd);    
     pthread_exit(value);
 }
-
 
 int main(int argc, char **argv)
 {
@@ -111,6 +151,8 @@ int main(int argc, char **argv)
     int	time_listenfd, time_connfd, res;
     struct sockaddr_in	echo_servaddr, time_servaddr, cli_addr;
     
+    int echo_flags, time_flags;
+
     fd_set fdset;
     FD_ZERO(&fdset);
     
@@ -137,6 +179,19 @@ int main(int argc, char **argv)
     time_servaddr.sin_family      = AF_INET;
     time_servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
     time_servaddr.sin_port        = htons(5300);	/* Time server */
+   
+    // Make the listening sockets non blocking
+    if ((echo_flags = fcntl(echo_listenfd, F_GETFL, 0) == -1) ||
+        (time_flags = fcntl(time_listenfd, F_GETFL, 0) == -1)) {
+        perror("fcntl F_GETFL Error");
+        exit(EXIT_FAILURE);
+    }
+    
+    if((fcntl(echo_listenfd, F_SETFL, echo_flags | O_NONBLOCK) == -1) ||
+       (fcntl(time_listenfd, F_SETFL, time_flags | O_NONBLOCK) == -1 )) {
+        perror("fcntl F_SETFL Error");
+        exit(EXIT_FAILURE);
+    }
     
     bind (time_listenfd, (SA *)&time_servaddr, sizeof(time_servaddr));
     listen(time_listenfd, LISTENQ);
@@ -160,7 +215,6 @@ int main(int argc, char **argv)
         }
 
         if (FD_ISSET(echo_listenfd, &fdset)) {
-            
             res = pthread_create(&echo_thread, 
                                 &attr, echo_client, (void *)&echo_listenfd);
             if(res != 0) {

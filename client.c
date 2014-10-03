@@ -7,7 +7,7 @@
 
 enum type {ECHO_CLI, TIME_CLI};
 
-void start_echocli (int type) {
+void start_echocli (int type, char *str) {
     int fd[2], status;
     pipe(fd);
    
@@ -24,16 +24,17 @@ void start_echocli (int type) {
         case 0 : { // child process
             close(fd[0]);
             
-            if (type == TIME_CLI) {
-                if ( (execlp("xterm", "xterm", "-hold", "-e", 
-                                    "./time_cli", "127.0.0.1", (char *)buf, (char *) 0)) < 0)  {
-                        exit(1);
+            if (type == TIME_CLI) { // exec the time client in xterm window
+                if ( (execlp("xterm", "xterm", "-e", 
+                                    "./time_cli", str, (char *)buf, (char *) 0)) < 0)  {
+                    perror("Exec error"); 
+                    exit(EXIT_FAILURE);
                 }
-            } else if (type == ECHO_CLI) {
-                // exec the echo client in another xterm window
-                if ( (execlp("xterm", "xterm", "-hold", "-e", 
-                                    "./echo_cli", "127.0.0.1", (char *)buf, (char *) 0)) < 0)  {
-                        exit(1);
+            } else if (type == ECHO_CLI) { // exec the echo client in xterm window
+                if ( (execlp("xterm", "xterm", "-e", 
+                                    "./echo_cli", str, (char *)buf, (char *) 0)) < 0)  {
+                    perror("Exec error"); 
+                    exit(EXIT_FAILURE);
                 }
             }
             break;
@@ -52,21 +53,23 @@ void start_echocli (int type) {
                 if (FD_ISSET(fileno(stdin), &fdset)) {
                     memset(recv_buf, 0, MAXLINE); 
                     Readline (fileno(stdin), recv_buf, MAXLINE);
-                    printf("Usage: Type in echo client window \n");
+                    printf("Usage: Type in client window \n");
                 }
 
                 if (FD_ISSET(fd[0], &fdset)) {
                     memset(recv_buf, 0, MAXLINE); 
-                    if (Readline (fd[0], recv_buf, MAXLINE) == 0)
-                        err_quit("Error reading status from client\n");
-
-                    // check if client is done
-                    if (strcmp(recv_buf, "Done") == 0) {
+                    /* If Ctrl+C is entered, we will receive Done on pipe
+                     * on client crashing, readline will return zero
+                     */
+                    if ((Readline (fd[0], recv_buf, MAXLINE) == 0) || 
+                                        (strcmp(recv_buf, "Done") == 0)) {
                         if ((pid = waitpid(-1, &status, 0)) > 0)
-                            printf("close status sent on pipe child %d terminated\n", pid);
+                            printf("Child %d terminated successfully.\n", pid);
                         break;
-                    } 
-                }
+                    }
+                } 
+                // print out status message by client
+                // fputs (recv_buf, stdout);
             }
             close(fd[0]);
             break;
@@ -83,6 +86,11 @@ void start_echocli (int type) {
 int main(int argc, char* argv[]) {
     
     int inp = 0;
+    if (argc < 2) {
+        printf("Usage <ip address>");
+        exit(EXIT_FAILURE);
+    }
+
     printf ("\n=================TCP Client Server=======================\n");
     
     while(1) {
@@ -92,12 +100,12 @@ int main(int argc, char* argv[]) {
         scanf("%d", &inp); 
         switch(inp) {
             case 1: {
-                start_echocli(ECHO_CLI);
+                start_echocli(ECHO_CLI, argv[1]);
                 break;
             }
 
             case 2: {
-                start_echocli(TIME_CLI);
+                start_echocli(TIME_CLI, argv[1]);
                 break;
             }
 

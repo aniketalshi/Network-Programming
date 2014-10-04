@@ -21,7 +21,6 @@ int accept_func(int listenfd, char *str) {
 
     socklen_t len = sizeof(struct sockaddr_in);
     int connfd, conn_flags;
-    //char str[INET_ADDRSTRLEN];
     struct sockaddr_in cli_addr;
     memset (&cli_addr, 0, sizeof(struct sockaddr_in));
    
@@ -49,7 +48,7 @@ int accept_func(int listenfd, char *str) {
     return connfd;
 }
 
-void *echo_client(void *value) {
+void *echo_server(void *value) {
    
     thread_args_t *th  = (thread_args_t *)value;
     int connfd         = th->connfd;
@@ -66,7 +65,7 @@ void *echo_client(void *value) {
          *  client sent the fin, close the connection
          */
         if (n == 0) {
-            printf("connection closed by the client %s \n", str);
+            printf("connection to echo server closed by the client %s \n", str);
             break;
         }
         
@@ -81,7 +80,7 @@ void *echo_client(void *value) {
     pthread_exit(value);
 }
 
-void *time_client(void* value) {
+void *time_server(void* value) {
     
     thread_args_t *th = (thread_args_t *)value;
     int connfd        = th->connfd;
@@ -110,7 +109,7 @@ void *time_client(void* value) {
          */
         if (FD_ISSET(connfd, &fdset)) {
             if (Readline(connfd, recv_line, MAXLINE) == 0) {
-                printf("connection closed by the client %s \n", str);
+                printf("connection to time server closed by the client %s \n", str);
                 close(connfd);
                 pthread_exit(value);
                 exit(EXIT_SUCCESS);
@@ -130,6 +129,7 @@ int main(int argc, char **argv)
 {
     int	echo_listenfd, echo_connfd;
     int	time_listenfd, time_connfd, res;
+    const int on = 1;
     struct sockaddr_in	echo_servaddr, time_servaddr, cli_addr;
     
     int echo_flags, time_flags;
@@ -160,19 +160,28 @@ int main(int argc, char **argv)
     time_servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
     time_servaddr.sin_port        = htons(5300);	/* Time server */
    
-    // Make the listening sockets non blocking
+    /* Make the listening sockets non blocking */
+    
+    // get the flags 
     if ((echo_flags = fcntl(echo_listenfd, F_GETFL, 0) == -1) ||
         (time_flags = fcntl(time_listenfd, F_GETFL, 0) == -1)) {
         perror("fcntl F_GETFL Error");
         exit(EXIT_FAILURE);
     }
     
+    // set the flags
     if((fcntl(echo_listenfd, F_SETFL, echo_flags | O_NONBLOCK) == -1) ||
        (fcntl(time_listenfd, F_SETFL, time_flags | O_NONBLOCK) == -1 )) {
         perror("fcntl F_SETFL Error");
         exit(EXIT_FAILURE);
     }
     
+    // make the sockets reusable
+    if((setsockopt(echo_listenfd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on)) < 0) ||
+       (setsockopt(time_listenfd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on)) < 0)) {
+        perror("set socket option error");
+    }
+  
     bind (time_listenfd, (SA *)&time_servaddr, sizeof(time_servaddr));
     listen(time_listenfd, LISTENQ);
     bind (echo_listenfd, (SA *)&echo_servaddr, sizeof(echo_servaddr));
@@ -183,7 +192,6 @@ int main(int argc, char **argv)
     while(1) {
         FD_SET (time_listenfd, &fdset);
         FD_SET (echo_listenfd, &fdset);
-        //memset (&cli_addr, 0, sizeof(cli_addr));
 
         select (max(time_listenfd, echo_listenfd) + 1,
                                     &fdset, NULL, NULL, NULL);
@@ -195,7 +203,7 @@ int main(int argc, char **argv)
             memcpy(th->client_ip, str, strlen(str)); 
             
             res = pthread_create(&time_thread, 
-                                &attr, time_client, (void *)th);
+                                &attr, time_server, (void *)th);
             if(res != 0) {
                 perror("Thread creation failed");
                 exit(EXIT_FAILURE);
@@ -209,7 +217,7 @@ int main(int argc, char **argv)
             memcpy(th->client_ip, str, strlen(str)); 
             
             res = pthread_create(&echo_thread, 
-                                &attr, echo_client, (void *)th);
+                                &attr, echo_server, (void *)th);
             if(res != 0) {
                 perror("Thread creation failed");
                 exit(EXIT_FAILURE);

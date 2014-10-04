@@ -3,6 +3,7 @@
 #include <string.h>
 #include <sys/socket.h>
 #include <netinet/in.h> 
+#include <ctype.h>
 #include "unp.h"
 
 enum type {ECHO_CLI, TIME_CLI};
@@ -94,31 +95,24 @@ int main(int argc, char* argv[]) {
     printf ("\n=================TCP Client Server=======================\n");
     
     while(1) {
-        
+        int inp; 
         printf ("Choose one of the option :\n Echo Client : Enter 1"
                             "\n Time Server : Enter 2\n Exit : Enter 3\n");
-        scanf("%d", &inp); 
+        if(scanf("%d", &inp) <= 0) 
+            break;
+
         switch(inp) {
-            case 1: {
+            case 1: 
                 start_echocli(ECHO_CLI, argv[1]);
                 break;
-            }
-
-            case 2: {
+            case 2: 
                 start_echocli(TIME_CLI, argv[1]);
                 break;
-            }
-
-            case 3: {
+            case 3: 
                return 0; 
-            }
-            
-            default: {
+            default: 
                 break;
-            }
         }
-
     }
-    
     return 0;
 }

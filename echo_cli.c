@@ -6,6 +6,11 @@
 
 int parent_fd;
 
+void err_write(char *str) {
+    write (parent_fd, str, strlen(str));
+    exit(EXIT_SUCCESS); 
+}
+
 void echo_fun(FILE *fp, int sockt_fd, char *srv_ip) {
 
     char send_line[MAXLINE], recv_line[MAXLINE], buf[100];
@@ -26,7 +31,7 @@ void echo_fun(FILE *fp, int sockt_fd, char *srv_ip) {
         if (FD_ISSET(fileno(fp), &fdset)) {
             // get the input from stdin into buf
             if (Fgets (send_line, MAXLINE, fp) == NULL)
-                err_quit("Error reading input\n");
+                err_write("EOF typed by user\n");
             // write the input from buf to socket stream
             Writen (sockt_fd, send_line, strlen(send_line));
         }
@@ -35,7 +40,7 @@ void echo_fun(FILE *fp, int sockt_fd, char *srv_ip) {
         if (FD_ISSET(sockt_fd, &fdset)) {
             // Read the input from socket into buf
             if (Readline(sockt_fd, recv_line, MAXLINE) == 0)
-                err_quit("Server terminated, Recvd FIN\n");
+                err_write("Server terminated, Recvd FIN\n");
             // write output from buf to stdout
             fputs (recv_line, stdout);
         }
@@ -70,7 +75,6 @@ int get_hostname(char *str, struct in_addr ipv4addr) {
     return 0;
 }
 
-
 int main(int argc, char* argv[]) {
 
     int sockt_fd, sock_flags, r;
@@ -80,8 +84,7 @@ int main(int argc, char* argv[]) {
 
     // check if user entered ip address 
     if (argc < 2) {
-        perror("IP Address expected");
-        exit(EXIT_FAILURE);
+        err_write("IP Address expected");
     }
     
     // if pipe is not set by parent exit
@@ -92,14 +95,12 @@ int main(int argc, char* argv[]) {
         parent_fd = atoi(argv[2]);
    
     if (get_hostname(argv[1], ipv4addr) < 0) {
-        perror("error in ipaddress/hostname"); 
-        exit(EXIT_FAILURE);
+        err_write("error in ipaddress/hostname"); 
     }
     
     // open a ipv4, stream socket  
     if ( (sockt_fd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
-        perror("Error creating socket");
-        exit(EXIT_FAILURE);
+        err_write("Error creating socket");
     }
 
     // zero out the serveraddr struct and initialize it
@@ -122,7 +123,7 @@ int main(int argc, char* argv[]) {
     // Non blocking connect call
     if (connect (sockt_fd, (SA *) &server_addr, sizeof(server_addr)) < 0)
         if(errno != EINPROGRESS)
-            exit(EXIT_FAILURE);
+            err_write("Connect Error");
 
     echo_fun(stdin, sockt_fd, argv[1]);
     return 0;

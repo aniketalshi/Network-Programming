@@ -6,11 +6,15 @@
 
 int parent_fd;
 
+void err_write(char *str) {
+    write (parent_fd, str, strlen(str));
+    exit(EXIT_SUCCESS); 
+}
+
 void sig_int_handler (int signo){
     write (parent_fd, "Done", 4);
     exit(EXIT_SUCCESS); 
 }
-
 
 int get_hostname(char *str, struct in_addr ipv4addr) {
 
@@ -82,8 +86,8 @@ int main(int argc, char* argv[]) {
             err_sys("output error");
     }
 
-    if (r < 0)
-        err_sys("read error");
+    if (r <= 0)
+        err_write("Server terminated, Recvd FIN\n");
 
     return  0;
 }

@@ -52,35 +52,14 @@ void sig_int_handler (int signo){
     exit(EXIT_SUCCESS); 
 }
 
-int get_hostname(char *str, struct in_addr ipv4addr) {
-
-    char buf[MAXLINE]; 
-    struct hostent *hnet;
-    struct in_addr **addr_list;
-
-    if ((hnet = gethostbyname(str)) != NULL) {
-       addr_list = (struct in_addr **)hnet->h_addr_list; 
-       ipv4addr = *addr_list[0]; 
-    } else {
-        inet_pton(AF_INET, str, &ipv4addr);
-        if ((hnet = gethostbyaddr(&ipv4addr, sizeof(ipv4addr), AF_INET)) == NULL) {
-            return -1;
-        }
-    }
-    
-    snprintf(buf, MAXLINE, "The Server is %s \t ip address: %s\n", 
-                                            hnet->h_name, inet_ntoa(ipv4addr));
-    printf("%s\n", buf);
-    write(parent_fd, buf, strlen(buf));
-    return 0;
-}
-
 int main(int argc, char* argv[]) {
 
     int sockt_fd, sock_flags, r;
     socklen_t sklen;
     struct sockaddr_in server_addr;
     struct in_addr ipv4addr;
+    struct in_addr **addr_list;
+    struct hostent *hnet;
 
     // check if user entered ip address 
     if (argc < 2) {
@@ -94,31 +73,40 @@ int main(int argc, char* argv[]) {
     if(argv[2])
         parent_fd = atoi(argv[2]);
    
-    if (get_hostname(argv[1], ipv4addr) < 0) {
-        err_write("error in ipaddress/hostname"); 
-    }
-    
     // open a ipv4, stream socket  
     if ( (sockt_fd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
         err_write("Error creating socket");
     }
+    
 
     // zero out the serveraddr struct and initialize it
     memset(&server_addr, 0, sizeof(server_addr));
     server_addr.sin_family  = AF_INET;
     server_addr.sin_port    = htons(5200); 
-    server_addr.sin_addr    = ipv4addr;
+    //server_addr.sin_addr    = ipv4addr;
 
-    // register signal handler to catch SIGINT 
+    if (inet_pton(AF_INET, argv[1], &(server_addr.sin_addr)) == 1) {
+           
+         hnet = gethostbyaddr(&(server_addr.sin_addr), sizeof(struct in_addr), AF_INET);
+    } else {
+        if (hnet = gethostbyname(argv[1])) {
+            addr_list = (struct in_addr **)hnet->h_addr_list; 
+            inet_pton(AF_INET, inet_ntoa(*addr_list[0]), &(server_addr.sin_addr));
+        } else {
+            perror("Error with ip hostname");
+            exit(EXIT_FAILURE);
+        }
+    }
+   
+    printf("The Server is %s \t ip address: %s\n", 
+                                        hnet->h_name, inet_ntoa(server_addr.sin_addr));
+   
+   // register signal handler to catch SIGINT 
     signal (SIGINT, sig_int_handler);
    
-    // make socket fd non blocking
-    if ((sock_flags = fcntl(sockt_fd, F_GETFL, 0) == -1) ||
-        (fcntl(sockt_fd, F_SETFL, sock_flags | O_NONBLOCK) == -1)) {
-        
-        perror("fcntl Error");
-        exit(EXIT_FAILURE);
-    }
+    //inet_ntop(AF_INET, &(server_addr.sin_addr), str, INET_ADDRSTRLEN); 
+    //printf("ip addr: %s\n", str);
+    
     
     // Non blocking connect call
     if (connect (sockt_fd, (SA *) &server_addr, sizeof(server_addr)) < 0)

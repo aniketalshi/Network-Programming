@@ -104,9 +104,6 @@ int main(int argc, char* argv[]) {
    // register signal handler to catch SIGINT 
     signal (SIGINT, sig_int_handler);
    
-    //inet_ntop(AF_INET, &(server_addr.sin_addr), str, INET_ADDRSTRLEN); 
-    //printf("ip addr: %s\n", str);
-    
     
     // Non blocking connect call
     if (connect (sockt_fd, (SA *) &server_addr, sizeof(server_addr)) < 0)

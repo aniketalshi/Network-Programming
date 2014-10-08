@@ -59,6 +59,9 @@ int main(int argc, char* argv[]) {
         }
     }
     
+    printf("The Server is %s \t ip address: %s\n", 
+                                        hnet->h_name, inet_ntoa(server_addr.sin_addr));
+    
     // register signal handler to catch SIGINT 
     if(signal (SIGINT, sig_int_handler) == SIG_ERR)
         perror("signal error");

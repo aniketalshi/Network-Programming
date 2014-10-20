@@ -6,7 +6,7 @@ LIBS =  -lresolv -lnsl -lsocket\
 FLAGS =  -g -O2 
 CFLAGS = ${FLAGS} -I/home/courses/cse533/Stevens/unpv13e_solaris2.10/lib
 
-all: prifinfo_plus server
+all: prifinfo_plus server client
 
 structs.o: structs.c
 	${CC} ${CFLAGS} -c structs.c
@@ -21,9 +21,14 @@ server: server.o structs.o get_ifi_info_plus.o
 server.o: server.c
 	${CC} ${CFLAGS} -c server.c
 
+client: client.o client.o get_ifi_info_plus.o
+	${CC} ${FLAGS} -o client client.o structs.o get_ifi_info_plus.o ${LIBS}
+client.o: client.c
+	${CC} ${CFLAGS} -c client.c
+
 get_ifi_info_plus.o: get_ifi_info_plus.c
 	${CC} ${CFLAGS} -c get_ifi_info_plus.c
 
 clean:
-	rm prifinfo_plus server prifinfo_plus.o get_ifi_info_plus.o server.o structs.o
+	rm client prifinfo_plus server prifinfo_plus.o get_ifi_info_plus.o server.o structs.o client.o
 

@@ -25,5 +25,5 @@ get_ifi_info_plus.o: get_ifi_info_plus.c
 	${CC} ${CFLAGS} -c get_ifi_info_plus.c
 
 clean:
-	rm prifinfo_plus server prifinfo_plus.o get_ifi_info_plus.o server.o
+	rm prifinfo_plus server prifinfo_plus.o get_ifi_info_plus.o server.o structs.o
 

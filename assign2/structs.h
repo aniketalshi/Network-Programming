@@ -9,6 +9,7 @@
 
 struct sock_struct {
 	int sockfd;
+	int is_loopback;
 	struct sockaddr *ip_addr;
 	struct sockaddr	*net_mask;
         struct in_addr subnetaddr;
@@ -18,6 +19,7 @@ struct sock_struct {
 struct sock_struct * 
 get_sock_struct (int sockfd, 
 		 struct sockaddr *ip_addr,
-	         struct sockaddr *net_mask );
+	         struct sockaddr *net_mask,
+		 int is_loopback);
 
 #endif /* __structs_h */

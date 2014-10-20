@@ -4,15 +4,16 @@
 struct sock_struct * 
 get_sock_struct (int sockfd, 
 		 struct sockaddr *ip_addr,
-	         struct sockaddr *net_mask ) {
-
+	         struct sockaddr *net_mask,
+		 int is_loopback) {
 
     struct sock_struct * sk = (struct sock_struct *) malloc
 					(sizeof(struct sock_struct));
-    sk->sockfd     = sockfd;
-    sk->ip_addr    = ip_addr;
-    sk->net_mask   = net_mask;
-    sk->nxt_struct = NULL;
+    sk->sockfd      = sockfd;
+    sk->ip_addr     = ip_addr;
+    sk->net_mask    = net_mask;
+    sk->is_loopback = is_loopback;
+    sk->nxt_struct  = NULL;
     
     sk->subnetaddr.s_addr  = (((struct sockaddr_in *) ip_addr)->sin_addr.s_addr) &
 		      (((struct sockaddr_in *) net_mask)->sin_addr.s_addr);

@@ -17,7 +17,7 @@ int main(int argc, char* argv[]) {
     for (ifihead = ifi = Get_ifi_info_plus(AF_INET, 1);
             ifi != NULL; ifi = ifi->ifi_next) {
 	
-	if (ifi->ifi_addr && ifi->ifi_ntmaddr) {
+	if (ifi->ifi_addr != NULL && ifi->ifi_ntmaddr != NULL) {
 	     
 	    sockfd = Socket(AF_INET, SOCK_DGRAM, 0); 
 	    setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));

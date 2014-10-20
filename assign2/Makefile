@@ -1,0 +1,29 @@
+CC = gcc
+
+LIBS =  -lresolv -lnsl -lsocket\
+	/home/courses/cse533/Stevens/unpv13e_solaris2.10/libunp.a
+
+FLAGS =  -g -O2 
+CFLAGS = ${FLAGS} -I/home/courses/cse533/Stevens/unpv13e_solaris2.10/lib
+
+all: prifinfo_plus server
+
+structs.o: structs.c
+	${CC} ${CFLAGS} -c structs.c
+
+prifinfo_plus: prifinfo_plus.o get_ifi_info_plus.o
+	${CC} ${FLAGS} -o prifinfo_plus prifinfo_plus.o get_ifi_info_plus.o ${LIBS}
+prifinfo_plus.o: prifinfo_plus.c
+	${CC} ${CFLAGS} -c prifinfo_plus.c
+
+server: server.o structs.o get_ifi_info_plus.o
+	${CC} ${FLAGS} -o server server.o structs.o get_ifi_info_plus.o ${LIBS}
+server.o: server.c
+	${CC} ${CFLAGS} -c server.c
+
+get_ifi_info_plus.o: get_ifi_info_plus.c
+	${CC} ${CFLAGS} -c get_ifi_info_plus.c
+
+clean:
+	rm prifinfo_plus server prifinfo_plus.o get_ifi_info_plus.o server.o
+

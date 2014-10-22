@@ -39,13 +39,11 @@ int get_match (unsigned long num1, unsigned long num2){
     }
     return cnt;
 }
-
 void get_client_ip (struct sock_struct *sock_struct_head, 
 		    struct sockaddr_in *cli_addr,
 		    char *srv_ip) {
     
-    struct sockaddr_in srv, *ntmsk;
-    struct in_addr subnet;
+    struct sockaddr_in srv, ntmsk, subnet;
     struct sock_struct *st = sock_struct_head;
     int is_loopback = 0, max_match = 0, match;
     char str[INET_ADDRSTRLEN], str1[INET_ADDRSTRLEN];
@@ -53,14 +51,14 @@ void get_client_ip (struct sock_struct *sock_struct_head,
     inet_pton(AF_INET, srv_ip, &(srv.sin_addr));
     
     while(st) {
-	ntmsk  = ((struct sockaddr_in *)st->net_mask);
+	ntmsk  = st->net_mask;
 	subnet = st->subnetaddr;
-	match  = get_match((srv.sin_addr.s_addr & ntmsk->sin_addr.s_addr), subnet.s_addr);
+	match  = get_match((srv.sin_addr.s_addr & ntmsk.sin_addr.s_addr), subnet.sin_addr.s_addr);
 	//printf("match %d\n", match);
 	
 	if (match > max_match) {
 	    max_match           = match; 
-	    cli_addr->sin_addr.s_addr  = ((struct sockaddr_in *)st->ip_addr)->sin_addr.s_addr;
+	    cli_addr->sin_addr.s_addr  = st->ip_addr.sin_addr.s_addr;
 	    if(st->is_loopback == 1) {
 		is_loopback = 1;
 	    } 
@@ -71,10 +69,16 @@ void get_client_ip (struct sock_struct *sock_struct_head,
     return;
 }
 
+void cli_func(FILE *fp, int sockfd, SA *srv_addr, socklen_t len) {
+    char *sendline = "SYN"; 
+    Connect(sockfd, (SA *) srv_addr, len);
+    write(sockfd, sendline, strlen(sendline));
+}
+
 int main(int argc, char* argv[]) {
 
     struct ifi_info *ifi, *ifihead;
-    struct sockaddr_in *sa, cli_addr, temp_addr, sock;
+    struct sockaddr_in *sa, cli_addr, temp_addr, sock, srv_addr;
     struct sock_struct *sock_struct_head, *prev, *curr;
     int is_loopback = 0, connect_fd, socklen;
     char str[INET_ADDRSTRLEN], str1[INET_ADDRSTRLEN];
@@ -92,7 +96,8 @@ int main(int argc, char* argv[]) {
 	if (ifi->ifi_flags & IFF_LOOPBACK)
             is_loopback = 1;
 	    
-	curr = get_sock_struct (0, ifi->ifi_addr, ifi->ifi_ntmaddr, is_loopback); 
+	curr = get_sock_struct (0, (struct sockaddr_in *)ifi->ifi_addr,
+				    (struct sockaddr_in *)ifi->ifi_ntmaddr, is_loopback); 
 	   
 	if (!sock_struct_head && !prev) {
 	    sock_struct_head = curr;
@@ -107,7 +112,7 @@ int main(int argc, char* argv[]) {
     print_sock_struct (sock_struct_head);
     free_ifi_info_plus(ifihead);
     
-    get_client_ip(sock_struct_head, &temp_addr, "130.245.1.182"); 
+    get_client_ip(sock_struct_head, &temp_addr, "127.0.0.1"); 
     
     printf ("\nIp choosen by client : %s\n", inet_ntoa(temp_addr.sin_addr)); 
     
@@ -124,8 +129,16 @@ int main(int argc, char* argv[]) {
     // get the port no assigned to this socket
     if (getsockname(connect_fd, (SA *)&sock, &socklen) == -1) 
        perror("getsockname error");
-    
     printf("client port          : %d\n", ntohs(sock.sin_port));
+    
+    memset(&srv_addr, 0, sizeof(srv_addr));
+    srv_addr.sin_family  = AF_INET;
+    srv_addr.sin_port    = htons(5500);
+    inet_pton (AF_INET, "127.0.0.1", &srv_addr.sin_addr);
 
+    // First Hand-shake
+    cli_func(stdin, connect_fd, (SA *)&srv_addr, sizeof(srv_addr)); 
+    
     return 0;
 }
+

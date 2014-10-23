@@ -5,7 +5,6 @@
 #include <string.h>
 #include <arpa/inet.h>
 #include "unp.h"
-#include "readline.h"
 
 typedef struct thread_args {
     int connfd;

@@ -4,7 +4,6 @@
 #include <string.h>
 #include <arpa/inet.h>
 #include "unp.h"
-#include "readline.h"
 
 void echo_fun(int sock_fd) {
     int n;

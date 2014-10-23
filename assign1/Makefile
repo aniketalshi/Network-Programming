@@ -1,10 +1,10 @@
 CC = gcc
 
-LIBS = -lresolv -lnsl -lpthread\
-    /home/stufs1/aalshi/cse533/stevens/unpv13e/libunp.a\
+LIBS = -lresolv -lsocket -lnsl -lpthread\
+	/home/courses/cse533/Stevens/unpv13e_solaris2.10/libunp.a\
 
-FLAGS = -g -O2 -lm
-CFLAGS = ${FLAGS} -I /home/stufs1/aalshi/cse533/stevens/unpv13e/lib/
+FLAGS = -g -O2
+CFLAGS = ${FLAGS} -I /home/courses/cse533/Stevens/unpv13e_solaris2.10/lib
 
 all: client server time_cli time_srv echo_srv echo_cli
 
@@ -28,8 +28,8 @@ time_cli: time_cli.o
 time_cli.o: time_cli.c
 	${CC} ${CFLAGS} -c time_cli.c
 
-readline.o: /home/stufs1/aalshi/cse533/assign1/readline.c
-	${CC} ${CFLAGS} -c /home/stufs1/aalshi/cse533/assign1/readline.c
+readline.o: /home/courses/cse533/Stevens/unpv13e_solaris2.10/threads/readline.c
+	${CC} ${CFLAGS} -c /home/courses/cse533/Stevens/unpv13e_solaris2.10/threads/readline.c
 
 echo_srv: echo_srv.o readline.o
 	${CC} ${FLAGS} -o echo_srv echo_srv.o readline.o ${LIBS}
@@ -43,6 +43,6 @@ echo_cli.o: echo_cli.c
 
 .PHONY : clean
 clean: 
-	rm time_cli time_srv time_cli.o readline.o \
+	rm client server time_cli time_srv time_cli.o readline.o \
 	time_srv.o echo_cli.o echo_srv.o client.o server.o
 

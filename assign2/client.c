@@ -69,19 +69,38 @@ void get_client_ip (struct sock_struct *sock_struct_head,
     return;
 }
 
-void cli_func(FILE *fp, int sockfd, SA *srv_addr, socklen_t len) {
-    char *sendline = "SYN"; 
-    Connect(sockfd, (SA *) srv_addr, len);
+void 
+cli_func (int sockfd, SA *srv_addr, socklen_t len) { 
+    char buf[MAXLINE]; 
+    char sendline[MAXLINE];
+
+    sprintf(sendline, "SYN");
+    Connect(sockfd, (SA *)srv_addr, len);
+    write(sockfd, sendline, strlen(sendline));
+    
+    /* Second Hand-shake receive new connection port from server
+     * connect to this new port
+     */
+    read(sockfd, buf, MAXLINE);
+    
+    printf("\n second hand-shake. Port number received: %d\n", ntohs(atoi(buf)));
+
+    ((struct sockaddr_in *)srv_addr)->sin_port = htons(atoi(buf));
+    /* connect to this new port */
+    Connect(sockfd, (SA *)srv_addr, len);
+    sprintf(sendline, "ACK");
     write(sockfd, sendline, strlen(sendline));
 }
 
-int main(int argc, char* argv[]) {
+int 
+main(int argc, char* argv[]) {
 
     struct ifi_info *ifi, *ifihead;
     struct sockaddr_in *sa, cli_addr, temp_addr, sock, srv_addr;
     struct sock_struct *sock_struct_head, *prev, *curr;
     int is_loopback = 0, connect_fd, socklen;
     char str[INET_ADDRSTRLEN], str1[INET_ADDRSTRLEN];
+    char buf[MAXLINE];
     socklen_t len;
 
     for (ifihead = ifi = Get_ifi_info_plus(AF_INET, 1);
@@ -97,7 +116,7 @@ int main(int argc, char* argv[]) {
             is_loopback = 1;
 	    
 	curr = get_sock_struct (0, (struct sockaddr_in *)ifi->ifi_addr,
-				    (struct sockaddr_in *)ifi->ifi_ntmaddr, is_loopback); 
+				   (struct sockaddr_in *)ifi->ifi_ntmaddr, is_loopback); 
 	   
 	if (!sock_struct_head && !prev) {
 	    sock_struct_head = curr;
@@ -137,8 +156,9 @@ int main(int argc, char* argv[]) {
     inet_pton (AF_INET, "127.0.0.1", &srv_addr.sin_addr);
 
     // First Hand-shake
-    cli_func(stdin, connect_fd, (SA *)&srv_addr, sizeof(srv_addr)); 
-    
+    cli_func (connect_fd, (SA *)&srv_addr, sizeof(srv_addr)); 
+
+   
     return 0;
 }
 

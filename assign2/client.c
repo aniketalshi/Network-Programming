@@ -102,6 +102,12 @@ main(int argc, char* argv[]) {
     char str[INET_ADDRSTRLEN], str1[INET_ADDRSTRLEN];
     char buf[MAXLINE];
     socklen_t len;
+    char server_ip[MAXLINE], file_name[MAXLINE];
+    int server_port, window_size, seed_val, read_rate;
+    float prob_loss;
+    
+    /* read input from client.in file */
+    client_input(&server_ip, &server_port, &file_name, &window_size, &seed_val, &prob_loss, &read_rate);
 
     for (ifihead = ifi = Get_ifi_info_plus(AF_INET, 1);
             ifi != NULL; ifi = ifi->ifi_next) {

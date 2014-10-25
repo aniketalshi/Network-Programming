@@ -137,12 +137,15 @@ main(int argc, char* argv[]) {
     struct sockaddr_in *sa;
     const int on = 1;
     int is_loopback = 0, sockfd;
+    int server_port = 0, max_win_size = 0;                                                                                                                                     
     
+    /* read input from server.in input file */
+    server_input(&server_port, &max_win_size);
+
     /* Iterate over all interfaces and store values in struct */
     for (ifihead = ifi = Get_ifi_info_plus(AF_INET, 1);
             ifi != NULL; ifi = ifi->ifi_next) {
-	
-	
+		
 	if (ifi->ifi_addr != NULL && ifi->ifi_ntmaddr != NULL) {
 	    is_loopback = 0;
 	     

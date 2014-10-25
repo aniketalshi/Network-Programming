@@ -14,6 +14,70 @@ print_ip_port(struct sockaddr_in *st) {
     return buf;
 }
 
+/* Take input from server.in */
+void
+server_input(int *server_port, int *max_win_size){
+    char temp[MAXLINE];
+    
+    FILE *fp = NULL;
+    if((fp = fopen("server.in", "rt")) == NULL) {
+	printf("No such file: server.in\n");
+	exit(1);
+    }
+
+    fscanf(fp, "%s", temp);
+    *server_port = atoi(temp);
+
+    fscanf(fp, "%s", temp);
+    *max_win_size = atoi(temp);
+
+    printf("=============== Read from server.in ===============\n");
+    printf("Server Port Number: %d\n", *server_port);
+    printf("Maximum sliding window size: %d\n", *max_win_size);
+    printf("===================================================\n");
+}
+
+/* To get input from client.in */
+void
+client_input(char* server_ip, int* server_port, char* file_name, int* window_size, 
+             int* seed_val, float* prob_loss, int* read_rate){
+    char temp[MAXLINE];
+
+    FILE *fp = NULL;
+    if((fp = fopen("client.in", "rt")) == NULL) {
+	printf("No such file: client.in\n");
+	exit(1);
+    }
+    
+    fscanf(fp, "%s", server_ip);
+
+    fscanf(fp, "%s", temp);
+    *server_port = atoi(temp);
+		    
+    fscanf(fp, "%s", file_name);
+
+    fscanf(fp, "%s", temp);
+    *window_size = atoi(temp);
+				        
+    fscanf(fp, "%s", temp);
+    *seed_val = atoi(temp);
+						    
+    fscanf(fp, "%s", temp);
+    *prob_loss = atof(temp);
+
+    fscanf(fp, "%s", temp);
+    *read_rate = atoi(temp);
+
+    printf("=============== Read from client.in ===============\n");
+    printf("Server IP Address: %s\n", server_ip);
+    printf("Server Port Number: %d\n", *server_port);
+    printf("File name: %s\n", file_name);
+    printf("Window size: %d\n", *window_size);
+    printf("Seed Value: %d\n", *seed_val);
+    printf("Probability of loss: %f\n", *prob_loss); 
+    printf("Read Rate: %d\n", *read_rate);
+    printf("===================================================\n");
+}
 
 /* To print port */
 char *

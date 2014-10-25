@@ -39,30 +39,52 @@ int get_match (unsigned long num1, unsigned long num2){
     }
     return cnt;
 }
+
+/* get the total number of preceding bits set in a number */
+int
+get_bits(long number){
+    int count = 0;
+    long mask = 0x80000000;
+
+    while((number & mask) == mask){
+        count++;
+        number = number << 1;
+    }
+    return count;
+}
+
 void get_client_ip (struct sock_struct *sock_struct_head, 
 		    struct sockaddr_in *cli_addr,
 		    char *srv_ip) {
     
     struct sockaddr_in srv, ntmsk, subnet;
     struct sock_struct *st = sock_struct_head;
-    int is_loopback = 0, max_match = 0, match;
-    char str[INET_ADDRSTRLEN], str1[INET_ADDRSTRLEN];
-
+    int is_local = 0;
+    unsigned int max_bits = 0;
     inet_pton(AF_INET, srv_ip, &(srv.sin_addr));
-    
+   
     while(st) {
 	ntmsk  = st->net_mask;
 	subnet = st->subnetaddr;
-	match  = get_match((srv.sin_addr.s_addr & ntmsk.sin_addr.s_addr), subnet.sin_addr.s_addr);
-	//printf("match %d\n", match);
-	
-	if (match > max_match) {
-	    max_match           = match; 
-	    cli_addr->sin_addr.s_addr  = st->ip_addr.sin_addr.s_addr;
-	    if(st->is_loopback == 1) {
-		is_loopback = 1;
-	    } 
-	}
+
+        /* check if an IP is local */
+        if(subnet.sin_addr.s_addr == (srv.sin_addr.s_addr & ntmsk.sin_addr.s_addr)){
+            is_local = 1;
+            /* return, if current ip address is local to server and loopback address */
+            if(st->is_loopback == 1) { 
+                cli_addr->sin_addr = st->ip_addr.sin_addr;
+                return;
+            }
+            if(get_bits(ntmsk.sin_addr.s_addr) > max_bits){
+                max_bits = get_bits(ntmsk.sin_addr.s_addr); 
+                cli_addr->sin_addr = st->ip_addr.sin_addr; 
+            }
+        }
+        
+        if( !is_local && (st->is_loopback != 1)){
+            cli_addr->sin_addr = st->ip_addr.sin_addr;
+        }
+
 	st = st->nxt_struct;
     }
     
@@ -94,7 +116,6 @@ cli_func (int sockfd, SA *srv_addr, socklen_t len) {
 
 int 
 main(int argc, char* argv[]) {
-
     struct ifi_info *ifi, *ifihead;
     struct sockaddr_in *sa, cli_addr, temp_addr, sock, srv_addr;
     struct sock_struct *sock_struct_head, *prev, *curr;
@@ -105,7 +126,6 @@ main(int argc, char* argv[]) {
     char server_ip[MAXLINE], file_name[MAXLINE];
     int server_port, window_size, seed_val, read_rate;
     float prob_loss;
-    
     /* read input from client.in file */
     client_input(&server_ip, &server_port, &file_name, &window_size, &seed_val, &prob_loss, &read_rate);
 
@@ -137,7 +157,7 @@ main(int argc, char* argv[]) {
     print_sock_struct (sock_struct_head);
     free_ifi_info_plus(ifihead);
     
-    get_client_ip(sock_struct_head, &temp_addr, "127.0.0.1"); 
+    get_client_ip(sock_struct_head, &temp_addr, server_ip); 
     
     printf ("\nIp choosen by client : %s\n", inet_ntoa(temp_addr.sin_addr)); 
     

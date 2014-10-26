@@ -8,7 +8,7 @@ CFLAGS = ${FLAGS} -I/home/courses/cse533/Stevens/unpv13e_solaris2.10/lib
 
 all: prifinfo_plus server client
 
-structs.o: structs.c
+structs.o: structs.c 
 	${CC} ${CFLAGS} -c structs.c
 
 prifinfo_plus: prifinfo_plus.o get_ifi_info_plus.o
@@ -28,6 +28,9 @@ client.o: client.c
 
 get_ifi_info_plus.o: get_ifi_info_plus.c
 	${CC} ${CFLAGS} -c get_ifi_info_plus.c
+
+rtt.o: rtt.c
+	${CC} ${CFLAGS} -c rtt.c
 
 clean:
 	rm client prifinfo_plus server prifinfo_plus.o get_ifi_info_plus.o server.o structs.o client.o

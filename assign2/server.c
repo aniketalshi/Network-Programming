@@ -41,7 +41,8 @@ send_file (conn_struct_t *conn, char *filename) {
     /* Send final FIN */
     memset(send_buf, 0, CHUNK_SIZE);
     send_data(conn->conn_sockfd, (void *)send_buf, 0, __MSG_FIN);
-
+    
+    printf("\n***** File Transfer complete *****\n");
 
     close(file_d);
 }
@@ -159,7 +160,7 @@ listen_reqs (struct sock_struct *sock_struct_head) {
 
     while(1) {
 	fdset = tempset;
-	printf ("aaa\n");	
+	
 	retval = select (maxfd + 1, &fdset, NULL, NULL, NULL);
 	if (retval < 0) {
 	    if (errno == EINTR)
@@ -170,11 +171,16 @@ listen_reqs (struct sock_struct *sock_struct_head) {
 	for(curr = sock_struct_head; curr != NULL; curr = curr->nxt_struct) {
 	    if (FD_ISSET(curr->sockfd, &fdset)) {
 		
+    
+		printf ("\n Hello ");
 		bzero(&cli_addr, sizeof(cli_addr));
+		bzero(msg, MAXLINE);
+		
 		n = recvfrom(curr->sockfd, msg, MAXLINE, 0, 
 				    (struct sockaddr *)&cli_addr, &len);
 		
 		printf("\n Client : %s", print_ip_port(&cli_addr));
+		msg[n] = '\0';
 		
 		// If request with same ip/port already exist, ignore it
 		if (check_new_conn (&cli_addr, conn_head))
@@ -186,7 +192,6 @@ listen_reqs (struct sock_struct *sock_struct_head) {
 		} else {
 		    //TODO: store this pid of child in our table
 		}
-
 		return;
 	    }
 	}
@@ -201,12 +206,14 @@ main(int argc, char* argv[]) {
     struct sockaddr_in *sa;
     const int on = 1;
     int is_loopback = 0, sockfd;
-    
+    int server_port = 0, max_win_size = 0;                                                                                                                                     
+    /* read input from server.in input file */
+    server_input(&server_port, &max_win_size);
+
     /* Iterate over all interfaces and store values in struct */
     for (ifihead = ifi = Get_ifi_info_plus(AF_INET, 1);
             ifi != NULL; ifi = ifi->ifi_next) {
-	
-	
+		
 	if (ifi->ifi_addr != NULL && ifi->ifi_ntmaddr != NULL) {
 	    is_loopback = 0;
 	     
@@ -215,7 +222,7 @@ main(int argc, char* argv[]) {
 	    
 	    sa             = (struct sockaddr_in *)ifi->ifi_addr;
 	    sa->sin_family = AF_INET;
-	    sa->sin_port   = htons(5500);
+	    sa->sin_port   = htons(server_port);
 	    
 	    if (bind(sockfd, (SA *)sa, sizeof(*sa)) < 0)
 		perror("Bind error");

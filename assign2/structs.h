@@ -7,16 +7,23 @@
 #include "unp.h"
 #include "unpifiplus.h"
 
-#define IPLEN INET_ADDRSTRLEN
-#define MAXFD 256
+#define IPLEN		INET_ADDRSTRLEN
+#define MAXFD		256
+#define BUFF_SIZE	1024*1024
+#define CHUNK_SIZE	512
+
+/* FILE TYPE MACROS */
+#define __MSG_ACK		1  // Acknowledgement packet
+#define __MSG_FILE_DATA		2  // Packets containing file data
+#define __MSG_INFO		3  // Info regarding port nos etc
+#define __MSG_FIN		4  // Final packet
 
 /* sock_struct : stores all information related to a socket
  * socket number, ip_addr, netmask
  */
-
 typedef struct sock_struct {
-    int sockfd;			    // socket num
-    int is_loopback;		    // if the ip is the loopback ip
+    int    sockfd;		    // socket num
+    int    is_loopback;		    // if the ip is the loopback ip
     struct sockaddr_in ip_addr;	    // ip addr associated with this sock
     struct sockaddr_in net_mask;    // Network mask corresponding to this ip
     struct sockaddr_in subnetaddr;  // Calculates subnet
@@ -26,27 +33,50 @@ typedef struct sock_struct {
 
 /* struct stores all information about a connection */
 typedef struct conn_struct {
-    int conn_sockfd;		    // connection socket fd associated with this
-    int list_sockfd;		    // listen socket fd associated with this
-    struct sockaddr_in serv;	    // server ip and port no
-    struct sockaddr_in cli;	    // client ip and port no
+    int    conn_sockfd;		    // connection socket fd associated with this
+    pid_t  pid;			    // pid of proccess
+    struct sockaddr_in *serv;	    // server ip and port no
+    struct sockaddr_in *cli;	    // client ip and port no
     struct conn_struct *nxt_struct; // pointer to next struct
 }conn_struct_t; 
 
-/* head of list of all socket_structs */
-sock_struct_t *sock_head;
-/* head of list of connection structs */
-conn_struct_t *conn_head;
+
+/* structure of packet header */
+typedef struct msg_hdr {
+    uint32_t msg_type;	    // Type of message
+    uint32_t seq_num;	    // Sequence num of the message
+    uint32_t timestamp;	    // Timestamp on message 
+    uint32_t win_size;	    // Windown size
+}msg_hdr_t;
 
 /* allocate new sock struct */
-sock_struct_t * 
-get_sock_struct (int sockfd, 
+sock_struct_t * get_sock_struct (int sockfd, 
 		 struct sockaddr_in *ip_addr,
 	         struct sockaddr_in *net_mask,
 		 int is_loopback);
 
 /* find sock struct based on sockfd */
-sock_struct_t *
-find_sock_struct (int sockfd);
+sock_struct_t * find_sock_struct (int sockfd, sock_struct_t *head);
+
+
+/* Check if this is new connection */
+int 
+check_new_conn (struct sockaddr_in *cli, 
+		conn_struct_t *conn_head);
+
+/* Insert new conn struct in list */
+conn_struct_t * insert_conn_struct (int conn_sockfd,
+			 struct sockaddr_in *srv, 
+			 struct sockaddr_in *cli, 
+			 conn_struct_t **conn_head);
+
+/* To construct a msg hdr */
+msg_hdr_t *get_hdr (int msg_type, uint32_t seq_num, uint32_t ws);
+
+/* Logic too send data */
+void  send_data (int sockfd, void *buf, int len, int ftype);
+
+/* Logic to read data */
+void  read_data (int sockfd);
 
 #endif /* __structs_h */

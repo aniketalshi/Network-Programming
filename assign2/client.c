@@ -6,6 +6,8 @@
 #define BYTE 8
 extern struct ifi_info *Get_ifi_info_plus(int family, int doaliases);
 extern void free_ifi_info_plus(struct ifi_info *ifihead);
+struct sock_struct *sock_struct_head;
+
 
 /* compare two long num by each byte and check on how many bytes they match */
 int get_match (unsigned long num1, unsigned long num2){
@@ -74,7 +76,7 @@ cli_func (int sockfd, SA *srv_addr, socklen_t len) {
     char buf[MAXLINE]; 
     char sendline[MAXLINE];
 
-    sprintf(sendline, "SYN");
+    sprintf(sendline, "test.txt");
     Connect(sockfd, (SA *)srv_addr, len);
     write(sockfd, sendline, strlen(sendline));
     
@@ -86,10 +88,18 @@ cli_func (int sockfd, SA *srv_addr, socklen_t len) {
     printf("\n second hand-shake. Port number received: %d\n", ntohs(atoi(buf)));
 
     ((struct sockaddr_in *)srv_addr)->sin_port = htons(atoi(buf));
+    
     /* connect to this new port */
     Connect(sockfd, (SA *)srv_addr, len);
     sprintf(sendline, "ACK");
+    
+    /* Third Hand shake */
     write(sockfd, sendline, strlen(sendline));
+    
+    /* Start reading data from client */
+    //TODO: spwan two threads consumer and producer
+    
+    read_data(sockfd);
 }
 
 int 
@@ -97,7 +107,7 @@ main(int argc, char* argv[]) {
 
     struct ifi_info *ifi, *ifihead;
     struct sockaddr_in *sa, cli_addr, temp_addr, sock, srv_addr;
-    struct sock_struct *sock_struct_head, *prev, *curr;
+    struct sock_struct *prev, *curr;
     int is_loopback = 0, connect_fd, socklen;
     char str[INET_ADDRSTRLEN], str1[INET_ADDRSTRLEN];
     char buf[MAXLINE];
@@ -131,7 +141,7 @@ main(int argc, char* argv[]) {
     print_sock_struct (sock_struct_head);
     free_ifi_info_plus(ifihead);
     
-    get_client_ip(sock_struct_head, &temp_addr, "127.0.0.1"); 
+    get_client_ip(sock_struct_head, &temp_addr, "127.0.0.3"); 
     
     printf ("\nIp choosen by client : %s\n", inet_ntoa(temp_addr.sin_addr)); 
     

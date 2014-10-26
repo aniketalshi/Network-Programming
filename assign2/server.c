@@ -8,12 +8,54 @@
 extern struct ifi_info *Get_ifi_info_plus(int family, int doaliases);
 extern void free_ifi_info_plus(struct ifi_info *ifihead);
 
+struct sock_struct *sock_struct_head;
+struct conn_struct *conn_head;
+
+/* Send file requested by client 
+ * Invoked after tcp handshake */
 void 
-client_func(sock_struct_t *curr, 
-	    struct sockaddr_in *cli_addr) {
+send_file (conn_struct_t *conn, char *filename) {
+    
+    int file_d, n_bytes;
+    char send_buf[CHUNK_SIZE];
+    
+    memset(send_buf, 0, CHUNK_SIZE);
+    printf("\n File Requested by client: %s\n", filename);
+    
+    /* open file for reading */
+    file_d = open(filename, O_RDONLY);
+    
+    //TODO: Handle case where no file present 
+    if (file_d == -1) {
+	printf("No such file present !");
+	return;
+    }
+    
+    /* read chunks of file */
+    while((n_bytes = read (file_d, send_buf, CHUNK_SIZE)) > 0) {
+	send_data(conn->conn_sockfd, (void *)send_buf, 
+				    n_bytes, __MSG_FILE_DATA);
+	memset(send_buf, 0, CHUNK_SIZE);
+    }
+
+    /* Send final FIN */
+    memset(send_buf, 0, CHUNK_SIZE);
+    send_data(conn->conn_sockfd, (void *)send_buf, 0, __MSG_FIN);
+
+
+    close(file_d);
+}
+
+/* Handle each client request */
+void 
+service_client_req(sock_struct_t *curr, 
+	    struct sockaddr_in *cli_addr,
+	    char *bufname) {
    
     struct sockaddr_in srv_addr, udpsock;
+    conn_struct_t *conn;
     int i, n, connect_fd, socklen, is_client_local = 0;
+    int buffer_cap, on = 1;
     char msg[MAXLINE];
     socklen_t len;
 
@@ -38,6 +80,16 @@ client_func(sock_struct_t *curr,
     /* Create a new UDP socket and bind to ephemeral port */
     connect_fd = Socket(AF_INET, SOCK_DGRAM, 0); 
     
+    /* set buffer size for socket and socket options */
+    buffer_cap = BUFFSIZE;
+    setsockopt(connect_fd, SOL_SOCKET, SO_SNDBUF, 
+			&buffer_cap, sizeof(buffer_cap));
+    
+    if (is_client_local) {
+	setsockopt(connect_fd, SOL_SOCKET, 
+		          SO_DONTROUTE, &on, sizeof(on));
+    }
+
     bzero(&srv_addr, sizeof(srv_addr));
     srv_addr.sin_family      = AF_INET;
     srv_addr.sin_port        = htons(0);
@@ -53,11 +105,15 @@ client_func(sock_struct_t *curr,
         perror("getsockname error");
     
     printf ("\n Server : %s", print_ip_port(&udpsock));
+
+    /* Server connects now to client port */
+    Connect(connect_fd, (SA *)cli_addr, sizeof(struct sockaddr_in));
     
     /* Second hand shake 
      * send message to client giving the new port number 
      * using the listening socket. 
      */
+    /* TODO: Add TCP Time out mechanism here for this packet */
     snprintf(msg, sizeof(msg), "%d", htons(udpsock.sin_port));
     sendto(curr->sockfd, (void *)msg, 
 	    sizeof(msg)+1, 0, (struct sockaddr *)cli_addr, sizeof(struct sockaddr));
@@ -68,6 +124,14 @@ client_func(sock_struct_t *curr,
     
     printf("\n Received final ack from client on new port");
 
+    /* Now we can close listening socket */
+    close(curr->sockfd);
+
+    /* insert in conn_struct */
+    conn = insert_conn_struct (connect_fd, &srv_addr , cli_addr, &conn_head);
+    
+    /* start sending file */
+    send_file (conn, bufname);
 }
 
 void
@@ -76,7 +140,7 @@ listen_reqs (struct sock_struct *sock_struct_head) {
     struct sock_struct *curr;
     struct sockaddr_in srv_addr, sock, cli_addr;
     
-    int n = 0, sockfd, maxfd = 0, i, is_client_local = 0;
+    int n = 0, sockfd, maxfd = 0, i, is_client_local = 0, retval;
     pid_t pid;
     char msg[MAXLINE];
     socklen_t len;
@@ -86,19 +150,18 @@ listen_reqs (struct sock_struct *sock_struct_head) {
     FD_ZERO(&tempset);
     
     len = sizeof(struct sockaddr_in);
-    bzero(&cli_addr, sizeof(cli_addr));
    
     for(curr = sock_struct_head; curr != NULL; curr = curr->nxt_struct) {
-        FD_SET(curr->sockfd, &fdset);
+        FD_SET(curr->sockfd, &tempset);
         if (curr->sockfd > maxfd)
             maxfd = curr->sockfd;
     }
-    tempset = fdset;
 
     while(1) {
 	fdset = tempset;
-	
-	if (select (maxfd + 1, &fdset, NULL, NULL, NULL) < 0) {
+	printf ("aaa\n");	
+	retval = select (maxfd + 1, &fdset, NULL, NULL, NULL);
+	if (retval < 0) {
 	    if (errno == EINTR)
 		continue;
 	    perror("select error");
@@ -107,22 +170,24 @@ listen_reqs (struct sock_struct *sock_struct_head) {
 	for(curr = sock_struct_head; curr != NULL; curr = curr->nxt_struct) {
 	    if (FD_ISSET(curr->sockfd, &fdset)) {
 		
+		bzero(&cli_addr, sizeof(cli_addr));
 		n = recvfrom(curr->sockfd, msg, MAXLINE, 0, 
 				    (struct sockaddr *)&cli_addr, &len);
 		
 		printf("\n Client : %s", print_ip_port(&cli_addr));
 		
 		// If request with same ip/port already exist, ignore it
-		if (check_new_conn (&cli_addr))
+		if (check_new_conn (&cli_addr, conn_head))
 		    continue;
 
 		if ( (pid = fork()) == 0) { //child proc
-		    client_func(curr, &cli_addr);
+		    service_client_req(curr, &cli_addr, msg);
 		
 		} else {
 		    //TODO: store this pid of child in our table
 		}
 
+		return;
 	    }
 	}
     }
@@ -130,8 +195,7 @@ listen_reqs (struct sock_struct *sock_struct_head) {
 
 int 
 main(int argc, char* argv[]) {
-    
-    struct sock_struct *sock_struct_head;
+   
     struct ifi_info *ifi, *ifihead;
     struct sock_struct *prev, *curr;
     struct sockaddr_in *sa;

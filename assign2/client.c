@@ -106,7 +106,8 @@ cli_func (int sockfd, SA *srv_addr, socklen_t len) {
     Connect(sockfd, (SA *)srv_addr, len);
     //TODO: Print out server info calling getpeername
     
-    write(sockfd, sendline, strlen(sendline));
+    //write(sockfd, sendline, strlen(sendline));
+    write(sockfd, "test.txt", 8);
     
     /* Second Hand-shake receive new connection port from server
      * connect to this new port
@@ -122,7 +123,8 @@ cli_func (int sockfd, SA *srv_addr, socklen_t len) {
     sprintf(sendline, "ACK");
     
     /* Third Hand shake */
-    write(sockfd, sendline, strlen(sendline));
+    sleep(3);
+    Write(sockfd, sendline, strlen(sendline));
     
     /* Start reading data from client */
     //TODO: spwan two threads consumer and producer

@@ -1,13 +1,14 @@
 /* include rtt1 */
 #include	"unprtt.h"
 
-int		rtt_d_flag = 0;		/* debug flag; can be set by caller */
+int rtt_d_flag = 0;		/* debug flag; can be set by caller */
 
 /*
  * Calculate the RTO value based on current estimators:
  *		smoothed RTT plus four times the deviation
  */
-#define	RTT_RTOCALC(ptr) ((ptr)->rtt_srtt + (4.0 * (ptr)->rtt_rttvar))
+//#define	RTT_RTOCALC(ptr) ((ptr)->rtt_srtt + (4.0 * (ptr)->rtt_rttvar))
+#define	RTT_RTOCALC(ptr) (((ptr)->rtt_srtt >> 3) + (ptr)->rtt_rttvar)
 
 static float
 rtt_minmax(uint32_t rto)
@@ -29,7 +30,7 @@ rtt_init(struct rtt_info *ptr)
 
 	ptr->rtt_rtt    = 0;
 	ptr->rtt_srtt   = 0;
-	ptr->rtt_rttvar = 750;		    
+	ptr->rtt_rttvar = 3000;		    
 	ptr->rtt_rto = rtt_minmax(RTT_RTOCALC(ptr));
 		/* first RTO at (srtt + (4 * rttvar)) = 3000 milliseconds */
 }
@@ -77,17 +78,18 @@ rtt_start(struct rtt_info *ptr)
  */
 
 /* include rtt_stop */
+#if 0
 void
 rtt_stop(struct rtt_info *ptr, uint32_t ms)
 {
 	uint32_t delta;
 
-	ptr->rtt_rtt = ms;		/* measured RTT in milli seconds */
+	ptr->rtt_rtt = ms;		/* measured rtt in milli seconds */
 
 	/*
-	 * Update our estimators of RTT and mean deviation of RTT.
-	 * See Jacobson's SIGCOMM '88 paper, Appendix A, for the details.
-	 * We use floating point here for simplicity.
+	 * update our estimators of rtt and mean deviation of rtt.
+	 * see jacobson's sigcomm '88 paper, appendix a, for the details.
+	 * we use floating point here for simplicity.
 	*/
 
 	delta = ptr->rtt_rtt - ptr->rtt_srtt;
@@ -98,9 +100,35 @@ rtt_stop(struct rtt_info *ptr, uint32_t ms)
 
 	ptr->rtt_rttvar += (delta - ptr->rtt_rttvar) / 4;	/* h = 1/4 */
 
-	ptr->rtt_rto = rtt_minmax(RTT_RTOCALC(ptr));
+	ptr->rtt_rto = rtt_minmax(rtt_rtocalc(ptr));
 }
+#endif
 /* end rtt_stop */
+
+void
+rtt_stop(struct rtt_info *ptr, uint32_t ms)
+{
+	uint32_t delta;
+
+	ptr->rtt_rtt = ms;		/* measured rtt in milli seconds */
+
+	/*
+	 * update our estimators of rtt and mean deviation of rtt.
+	 * see jacobson's sigcomm '88 paper, appendix a, for the details.
+	 * we use floating point here for simplicity.
+	*/
+	ptr->rtt_rtt -= ptr->rtt_srtt << 3;
+	ptr->rtt_srtt += ptr->rtt_rtt;		/* g = 1/8 */
+
+	if (ptr->rtt_rtt < 0)
+		ptr->rtt_rtt = -ptr->rtt_rtt;				/* |delta| */
+	
+	ptr->rtt_rtt -= ptr->rtt_var >> 2;
+	
+	ptr->rtt_rttvar += ptr->rtt_rtt;	/* h = 1/4 */
+
+	ptr->rtt_rto = rtt_minmax(rtt_rtocalc(ptr));
+}
 
 /*
  * A timeout has occurred.
@@ -111,7 +139,7 @@ rtt_stop(struct rtt_info *ptr, uint32_t ms)
 int
 rtt_timeout(struct rtt_info *ptr)
 {
-	ptr->rtt_rto *= 2;		/* next RTO */
+	ptr->rtt_rto = ptr->rtt_rto << 1;		/* next RTO */
 	
 	ptr->rtt_rto = rtt_minmax(ptr->rto);
 	

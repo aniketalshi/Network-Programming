@@ -276,7 +276,8 @@ read_data (int sockfd) {
     msg_hdr_t recv_msg_hdr;
     char buff[CHUNK_SIZE];
 
-    printf("\n sizeof hdr: %d\n", sizeof(struct msghdr));
+    // printf("\n sizeof pckt: %d\n", sizeof(struct msghdr));
+    // printf("\n sizeof msg hdr: %d\n", sizeof(msg_hdr_t));
     
     while (1) {
 	memset (&pcktmsg, 0, sizeof(struct msghdr));

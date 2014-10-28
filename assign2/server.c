@@ -171,8 +171,6 @@ listen_reqs (struct sock_struct *sock_struct_head) {
 	for(curr = sock_struct_head; curr != NULL; curr = curr->nxt_struct) {
 	    if (FD_ISSET(curr->sockfd, &fdset)) {
 		
-    
-		printf ("\n Hello ");
 		bzero(&cli_addr, sizeof(cli_addr));
 		bzero(msg, MAXLINE);
 		

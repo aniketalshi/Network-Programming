@@ -7,10 +7,11 @@
 #include "unp.h"
 #include "unpifiplus.h"
 
-#define IPLEN		INET_ADDRSTRLEN
-#define MAXFD		256
-#define BUFF_SIZE	1024*1024
-#define CHUNK_SIZE	512
+#define IPLEN		        INET_ADDRSTRLEN
+#define MAXFD		        256
+#define BUFF_SIZE	        1024*1024
+#define CHUNK_SIZE	        512
+#define SEND_WINDOW_SIZE        10
 
 /* FILE TYPE MACROS */
 #define __MSG_ACK		1  // Acknowledgement packet

@@ -139,7 +139,7 @@ service_client_req(sock_struct_t *curr,
         /* Check if maximum retransmits have already been sent. */
         if (rtt_timeout( &rtt_s ) == 0) {
                 printf("\n\n No communication from client; Sending packet again.\n");
-                rtt_start_timer( rtt_start( &rtt_s ) );
+                rtt_start_timer (rtt_start (&rtt_s));
                 
                 /* Send the packet again. */
                 sendto(curr->sockfd, (void *)msg, 

@@ -102,12 +102,10 @@ cli_func (int sockfd, SA *srv_addr, socklen_t len, char* file_name) {
     char buf[MAXLINE]; 
     char sendline[MAXLINE];
 
-    //sprintf(sendline, file_name);
     Connect(sockfd, (SA *)srv_addr, len);
     //TODO: Print out server info calling getpeername
     
     write(sockfd, file_name, strlen(file_name));
-    //write(sockfd, "test.txt", 8);
     
     /* Second Hand-shake receive new connection port from server
      * connect to this new port
@@ -123,7 +121,7 @@ cli_func (int sockfd, SA *srv_addr, socklen_t len, char* file_name) {
     sprintf(sendline, "ACK");
     
     /* Third Hand shake */
-    sleep(5);
+    sleep(10);
     Write(sockfd, sendline, strlen(sendline));
     
     /* Start reading data from client */

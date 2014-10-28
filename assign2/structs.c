@@ -216,9 +216,9 @@ msg_hdr_t
 *get_hdr (int msg_type, uint32_t seq_num, uint32_t ws) {
 
     msg_hdr_t *msg = (msg_hdr_t *)malloc(sizeof(struct msg_hdr));
-    msg->msg_type  =  msg_type;
-    msg->seq_num   =  seq_num;
-    msg->timestamp =  htonl(rtt_ts(&rtts));
+    msg->msg_type  = msg_type;
+    msg->seq_num   = seq_num;
+    msg->timestamp = htonl(rtt_ts(&rtts));
     msg->win_size  = ws;
 
     return msg;
@@ -276,7 +276,8 @@ read_data (int sockfd) {
     msg_hdr_t recv_msg_hdr;
     char buff[CHUNK_SIZE];
 
-    printf("\n sizeof hdr: %d\n", sizeof(struct msghdr));
+    // printf("\n sizeof pckt: %d\n", sizeof(struct msghdr));
+    // printf("\n sizeof msg hdr: %d\n", sizeof(msg_hdr_t));
     
     while (1) {
 	memset (&pcktmsg, 0, sizeof(struct msghdr));
@@ -308,10 +309,40 @@ read_data (int sockfd) {
 
 	if (recv_msg_hdr.msg_type ==  __MSG_FILE_DATA) {
 	    buff[n_bytes] = '\0';
-	    puts(buff);
+	    puts (buff);
+
+            // sending ack
+            recv_msg_hdr.msg_type = __MSG_ACK;
+            send_ack(sockfd, &recv_msg_hdr);
 	}
     }
-
     return;
+}
 
+/* Function to construct packet 
+ * and send packet */
+int
+send_ack (int sockfd, msg_hdr_t *header) {
+
+    struct msghdr pcktmsg;
+    struct iovec sendvec[1];
+    int nbytes;
+
+    memset(&pcktmsg, 0, sizeof(struct msghdr));
+    pcktmsg.msg_name     = NULL;
+    pcktmsg.msg_namelen  = 0;
+    pcktmsg.msg_iov      = sendvec;
+    pcktmsg.msg_iovlen   = 1;
+    
+    sendvec[0].iov_len   = sizeof(msg_hdr_t);
+    sendvec[0].iov_base  = (void *)header;
+    
+    // send the packet
+    if ((nbytes = sendmsg(sockfd, &pcktmsg, 0)) < 0) {
+	fprintf(stderr, "Error sending packet");	
+	return nbytes;
+    }
+    
+    printf("\n Ack Sent %d", header->seq_num);
+    return nbytes;
 }

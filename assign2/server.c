@@ -3,6 +3,7 @@
 #include <string.h>
 #include <setjmp.h>
 #include "structs.h"
+#include "controls.h"
 #include "rtt.c"
 
 #define TOTALFD 256
@@ -41,9 +42,11 @@ send_file (conn_struct_t *conn, char *filename) {
     }
     
     /* read chunks of file */
-    while((n_bytes = read (file_d, send_buf, CHUNK_SIZE)) > 0) {
+    while((n_bytes = read (file_d, send_buf, 1024*10)) > 0) {
 	send_data(conn->conn_sockfd, (void *)send_buf, 
 				    n_bytes, __MSG_FILE_DATA);
+        
+        //sending_func(conn->conn_sockfd, (void *)send_buf, n_bytes);
 	memset(send_buf, 0, CHUNK_SIZE);
     }
 
@@ -51,7 +54,7 @@ send_file (conn_struct_t *conn, char *filename) {
     memset(send_buf, 0, CHUNK_SIZE);
     send_data(conn->conn_sockfd, (void *)send_buf, 0, __MSG_FIN);
     
-    printf("\n***** File Transfer complete *****\n");
+    printf("\n==========File Transfer complete =============\n");
 
     close(file_d);
 }
@@ -70,8 +73,9 @@ service_client_req(sock_struct_t *curr,
     socklen_t len;
    
     signal(SIGALRM, timer_signal_handler);
-    //memset(&rtt_s, 0, sizeof(rtt_s));
+    memset(&rtt_s, 0, sizeof(rtt_s));
     rtt_init( &rtt_s );
+    
     /* Starting with fd:3, close all fds except the one on listening */
     for (i = 3; i < MAXFD; ++i) {
         if (i == curr->sockfd)
@@ -119,6 +123,7 @@ service_client_req(sock_struct_t *curr,
 
     /* Server connects now to client port */
     Connect(connect_fd, (SA *)cli_addr, sizeof(struct sockaddr_in));
+    
     /* Second hand shake 
      * send message to client giving the new port number 
      * using the listening socket. 
@@ -138,21 +143,21 @@ service_client_req(sock_struct_t *curr,
         
         /* Check if maximum retransmits have already been sent. */
         if (rtt_timeout( &rtt_s ) == 0) {
-                printf("\n\n No communication from client; Sending packet again.\n");
-                rtt_start_timer (rtt_start (&rtt_s));
-                
-                /* Send the packet again. */
-                sendto(curr->sockfd, (void *)msg, 
-	            sizeof(msg)+1, 0, (struct sockaddr *)cli_addr, sizeof(struct sockaddr));
-                
-                /* Send on the old port as well. */
-                sendto(connect_fd, (void *)msg, 
-	            sizeof(msg)+1, 0, (struct sockaddr *)cli_addr, sizeof(struct sockaddr));
-        }
-        /* Maximum number of retransmits sent; give up. */
-        else{
-                printf("\n Timeout on second handshake. Goodbye client\n");
-                return;
+            printf("\n\n No communication from client; Sending packet again.\n");
+            rtt_start_timer( rtt_start( &rtt_s ) );
+            
+            /* Send the packet again. */
+            sendto(curr->sockfd, (void *)msg, 
+	        sizeof(msg)+1, 0, (struct sockaddr *)cli_addr, sizeof(struct sockaddr));
+            
+            /* Send on the old port as well. */
+            sendto(connect_fd, (void *)msg, 
+	        sizeof(msg)+1, 0, (struct sockaddr *)cli_addr, sizeof(struct sockaddr));
+        
+        } else{
+            /* Maximum number of retransmits sent; give up. */
+            printf("\n Client not responding. Terminating connection\n");
+            return;
         }
     }
     
@@ -208,7 +213,6 @@ listen_reqs (struct sock_struct *sock_struct_head) {
         for(curr = sock_struct_head; curr != NULL; curr = curr->nxt_struct) {
 	    if (FD_ISSET(curr->sockfd, &fdset)) {
 		
-		printf ("\n Hello ");
 		bzero(&cli_addr, sizeof(cli_addr));
 		bzero(msg, MAXLINE);
 		

@@ -9,39 +9,6 @@ extern void free_ifi_info_plus(struct ifi_info *ifihead);
 struct sock_struct *sock_struct_head;
 
 
-/* compare two long num by each byte and check on how many bytes they match */
-int get_match (unsigned long num1, unsigned long num2){
-    int i, j, cnt = 0; 
-    for (i = 0; i < sizeof(unsigned long); ++i) {
-	int offset = (3-i)*BYTE;
-	char n1    = (num1 << (i*BYTE) >> offset);
-	char n2    = (num2 << (i*BYTE) >> offset);
-	
-	/* if byte is zero, we are done */
-	if (n1 == 0)
-	    break;
-	
-	/* if they match completely */
-	if(~(n1^n2) == 0xFF) {
-	    cnt = cnt + 8;
-	    continue;
-	}
-
-	/* check how many bits match */
-	for(j = 0; j < sizeof(char); ++j) {
-	    if(~((n1 << j >> BYTE-1-j) ^ (n2 << j >> BYTE-1-j))){
-		cnt++;
-	    } else {
-		break;
-	    }
-	}
-	
-	/* if they dont match break */
-	break;
-    }
-    return cnt;
-}
-
 /* get the total number of preceding bits set in a number */
 int
 get_bits(long number){
@@ -184,7 +151,7 @@ main(int argc, char* argv[]) {
 
     /* set socket options */
     /* set buffer size for socket and socket options */
-    buffer_cap = BUFFSIZE;
+    buffer_cap = BUFF_SIZE;
     setsockopt(connect_fd, SOL_SOCKET, SO_SNDBUF, 
 			&buffer_cap, sizeof(buffer_cap));
     

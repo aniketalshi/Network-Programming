@@ -1,10 +1,10 @@
 CC = gcc
 
-LIBS =  -lresolv -lnsl -lsocket\
-	/home/courses/cse533/Stevens/unpv13e_solaris2.10/libunp.a
+LIBS =  -lresolv -lnsl\
+	./Stevens/libunp.a
 
-FLAGS =  -g -O2 
-CFLAGS = ${FLAGS} -I/home/courses/cse533/Stevens/unpv13e_solaris2.10/lib
+FLAGS =  -g -O1
+CFLAGS = ${FLAGS} -I./Stevens/lib
 
 all: prifinfo_plus server client
 
@@ -16,8 +16,8 @@ prifinfo_plus: prifinfo_plus.o get_ifi_info_plus.o
 prifinfo_plus.o: prifinfo_plus.c
 	${CC} ${CFLAGS} -c prifinfo_plus.c
 
-server: server.o structs.o get_ifi_info_plus.o
-	${CC} ${FLAGS} -o server server.o structs.o get_ifi_info_plus.o ${LIBS}
+server: server.o structs.o get_ifi_info_plus.o controls.o
+	${CC} ${FLAGS} -o server server.o structs.o controls.o get_ifi_info_plus.o ${LIBS}
 server.o: server.c
 	${CC} ${CFLAGS} -c server.c
 
@@ -32,6 +32,10 @@ get_ifi_info_plus.o: get_ifi_info_plus.c
 rtt.o: rtt.c
 	${CC} ${CFLAGS} -c rtt.c
 
+controls.o: controls.c
+	${CC} ${CFLAGS} -c controls.c
+
 clean:
-	rm client prifinfo_plus server prifinfo_plus.o get_ifi_info_plus.o server.o structs.o client.o
+	rm client prifinfo_plus server prifinfo_plus.o get_ifi_info_\
+	plus.o server.o structs.o client.o rtt.o controls.o
 

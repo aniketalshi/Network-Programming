@@ -11,7 +11,6 @@
 #define MAXFD		        256
 #define BUFF_SIZE	        1024*1024
 #define CHUNK_SIZE	        512
-#define SEND_WINDOW_SIZE        10
 
 /* FILE TYPE MACROS */
 #define __MSG_ACK		1  // Acknowledgement packet
@@ -58,7 +57,6 @@ sock_struct_t * get_sock_struct (int sockfd,
 
 /* find sock struct based on sockfd */
 sock_struct_t * find_sock_struct (int sockfd, sock_struct_t *head);
-
 
 /* Check if this is new connection */
 int 

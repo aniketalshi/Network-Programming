@@ -71,9 +71,10 @@ service_client_req(sock_struct_t *curr,
     int buffer_cap, on = 1;
     char msg[MAXLINE];
     socklen_t len;
-    
-    // initialize the rtt struct
-    rtt_init (&rtt_s);
+   
+    signal(SIGALRM, timer_signal_handler);
+    memset(&rtt_s, 0, sizeof(rtt_s));
+    rtt_init( &rtt_s );
     
     /* Starting with fd:3, close all fds except the one on listening */
     for (i = 3; i < MAXFD; ++i) {
@@ -127,35 +128,36 @@ service_client_req(sock_struct_t *curr,
      * send message to client giving the new port number 
      * using the listening socket. 
      */
-    
-    // init no of retransmits
-    rtt_newpack( &rtt_s );
-    
-    // copy port number to message
     snprintf(msg, sizeof(msg), "%d", htons(udpsock.sin_port));
-    
-    // TODO: rtt_start( &rtt_s ) );
-    rtt_start_timer( 2000 );
-    
     sendto(curr->sockfd, (void *)msg, 
-	    sizeof(msg)+1, 0, (struct sockaddr *)cli_addr, sizeof(struct sockaddr));
+    	    sizeof(msg)+1, 0, (struct sockaddr *)cli_addr, sizeof(struct sockaddr));
+   
+    /* Initialize the retransmit count to 0. */
+    rtt_newpack( &rtt_s );
+
+    /* Start the timer. */
+    rtt_start_timer( rtt_start( &rtt_s ) );
     
-    
+    /* Handle the timer signal, and retransmit. */
     if (sigsetjmp(jmp, 1) != 0) {
         
+        /* Check if maximum retransmits have already been sent. */
         if (rtt_timeout( &rtt_s ) == 0) {
-                printf("\n Retransmitting connection packet");
-                
-                // TODO: Double rtt 
-                rtt_start_timer (2000);//rtt_start( &rtt_s ) );
-                
-                sendto(curr->sockfd, (void *)msg, 
-	            sizeof(msg)+1, 0, (struct sockaddr *)cli_addr, sizeof(struct sockaddr));
-                //TODO: send on the old port as well.
-        }
-        else{
-                printf("\n Client not responding. Terminating connection\n");
-                return;
+            printf("\n\n No communication from client; Sending packet again.\n");
+            rtt_start_timer( rtt_start( &rtt_s ) );
+            
+            /* Send the packet again. */
+            sendto(curr->sockfd, (void *)msg, 
+	        sizeof(msg)+1, 0, (struct sockaddr *)cli_addr, sizeof(struct sockaddr));
+            
+            /* Send on the old port as well. */
+            sendto(connect_fd, (void *)msg, 
+	        sizeof(msg)+1, 0, (struct sockaddr *)cli_addr, sizeof(struct sockaddr));
+        
+        } else{
+            /* Maximum number of retransmits sent; give up. */
+            printf("\n Client not responding. Terminating connection\n");
+            return;
         }
     }
     
@@ -192,7 +194,6 @@ listen_reqs (struct sock_struct *sock_struct_head) {
     
     len = sizeof(struct sockaddr_in);
     maxfd = -1; 
-    signal(SIGALRM, timer_signal_handler);
     for(curr = sock_struct_head; curr != NULL; curr = curr->nxt_struct) {
         FD_SET(curr->sockfd, &tempset);
         if (curr->sockfd > maxfd)

@@ -1,1 +1,7 @@
-Assignment 2
+Readme
+------
+
+CSE - 533 -- ASSIGNMENT 2
+-------------------------
+
+

@@ -1,7 +1,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <setjmp.h>
 #include "structs.h"
+#include "controls.h"
+#include "rtt.c"
 
 #define TOTALFD 256
 
@@ -10,6 +13,13 @@ extern void free_ifi_info_plus(struct ifi_info *ifihead);
 
 struct sock_struct *sock_struct_head;
 struct conn_struct *conn_head;
+
+static sigjmp_buf jmp;
+static struct rtt_info rtt_s;
+
+void timer_signal_handler(int signo){
+    siglongjmp(jmp, 1);
+}
 
 /* Send file requested by client 
  * Invoked after tcp handshake */
@@ -32,9 +42,11 @@ send_file (conn_struct_t *conn, char *filename) {
     }
     
     /* read chunks of file */
-    while((n_bytes = read (file_d, send_buf, CHUNK_SIZE)) > 0) {
+    while((n_bytes = read (file_d, send_buf, 1024*10)) > 0) {
 	send_data(conn->conn_sockfd, (void *)send_buf, 
 				    n_bytes, __MSG_FILE_DATA);
+        
+        //sending_func(conn->conn_sockfd, (void *)send_buf, n_bytes);
 	memset(send_buf, 0, CHUNK_SIZE);
     }
 
@@ -42,7 +54,7 @@ send_file (conn_struct_t *conn, char *filename) {
     memset(send_buf, 0, CHUNK_SIZE);
     send_data(conn->conn_sockfd, (void *)send_buf, 0, __MSG_FIN);
     
-    printf("\n***** File Transfer complete *****\n");
+    printf("\n==========File Transfer complete =============\n");
 
     close(file_d);
 }
@@ -59,7 +71,10 @@ service_client_req(sock_struct_t *curr,
     int buffer_cap, on = 1;
     char msg[MAXLINE];
     socklen_t len;
-
+    
+    // initialize the rtt struct
+    rtt_init (&rtt_s);
+    
     /* Starting with fd:3, close all fds except the one on listening */
     for (i = 3; i < MAXFD; ++i) {
         if (i == curr->sockfd)
@@ -80,7 +95,6 @@ service_client_req(sock_struct_t *curr,
     
     /* Create a new UDP socket and bind to ephemeral port */
     connect_fd = Socket(AF_INET, SOCK_DGRAM, 0); 
-    
     /* set buffer size for socket and socket options */
     buffer_cap = BUFFSIZE;
     setsockopt(connect_fd, SOL_SOCKET, SO_SNDBUF, 
@@ -104,7 +118,6 @@ service_client_req(sock_struct_t *curr,
     // get the ephemeral port no assigned to this socket
     if (getsockname(connect_fd, (void *)&udpsock, &socklen) == -1) 
         perror("getsockname error");
-    
     printf ("\n Server : %s", print_ip_port(&udpsock));
 
     /* Server connects now to client port */
@@ -114,10 +127,37 @@ service_client_req(sock_struct_t *curr,
      * send message to client giving the new port number 
      * using the listening socket. 
      */
-    /* TODO: Add TCP Time out mechanism here for this packet */
+    
+    // init no of retransmits
+    rtt_newpack( &rtt_s );
+    
+    // copy port number to message
     snprintf(msg, sizeof(msg), "%d", htons(udpsock.sin_port));
+    
+    // TODO: rtt_start( &rtt_s ) );
+    rtt_start_timer( 2000 );
+    
     sendto(curr->sockfd, (void *)msg, 
 	    sizeof(msg)+1, 0, (struct sockaddr *)cli_addr, sizeof(struct sockaddr));
+    
+    
+    if (sigsetjmp(jmp, 1) != 0) {
+        
+        if (rtt_timeout( &rtt_s ) == 0) {
+                printf("\n Retransmitting connection packet");
+                
+                // TODO: Double rtt 
+                rtt_start_timer (2000);//rtt_start( &rtt_s ) );
+                
+                sendto(curr->sockfd, (void *)msg, 
+	            sizeof(msg)+1, 0, (struct sockaddr *)cli_addr, sizeof(struct sockaddr));
+                //TODO: send on the old port as well.
+        }
+        else{
+                printf("\n Client not responding. Terminating connection\n");
+                return;
+        }
+    }
     
     /* Receive final ack on new UDP port */
     n = recvfrom(connect_fd, msg, MAXLINE, 0, 
@@ -151,24 +191,25 @@ listen_reqs (struct sock_struct *sock_struct_head) {
     FD_ZERO(&tempset);
     
     len = sizeof(struct sockaddr_in);
-   
+    maxfd = -1; 
+    signal(SIGALRM, timer_signal_handler);
     for(curr = sock_struct_head; curr != NULL; curr = curr->nxt_struct) {
         FD_SET(curr->sockfd, &tempset);
         if (curr->sockfd > maxfd)
             maxfd = curr->sockfd;
     }
-
+        FD_ZERO(&fdset);
     while(1) {
 	fdset = tempset;
-	
+
 	retval = select (maxfd + 1, &fdset, NULL, NULL, NULL);
 	if (retval < 0) {
 	    if (errno == EINTR)
 		continue;
 	    perror("select error");
 	}
-
-	for(curr = sock_struct_head; curr != NULL; curr = curr->nxt_struct) {
+	
+        for(curr = sock_struct_head; curr != NULL; curr = curr->nxt_struct) {
 	    if (FD_ISSET(curr->sockfd, &fdset)) {
 		
 		bzero(&cli_addr, sizeof(cli_addr));
@@ -186,11 +227,10 @@ listen_reqs (struct sock_struct *sock_struct_head) {
 
 		if ( (pid = fork()) == 0) { //child proc
 		    service_client_req(curr, &cli_addr, msg);
-		
+	            exit(0);	
 		} else {
 		    //TODO: store this pid of child in our table
 		}
-		return;
 	    }
 	}
     }

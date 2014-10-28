@@ -26,12 +26,12 @@ rtt_start_timer(long int ms){
     struct itimerval timer;
     /* Configure the timer to expire after 'ms' msec... */
     timer.it_value.tv_sec = 0;
-    timer.it_value.tv_usec = ms;
+    timer.it_value.tv_usec = ms * 1000;
     /* and every 0 msec after that. */
     timer.it_interval.tv_sec = 0;
     timer.it_interval.tv_usec = 0;
     /* start r */
-    setitimer (ITIMER_VIRTUAL, &timer, NULL);
+    setitimer (ITIMER_REAL, &timer, NULL);
 }
 
 void

@@ -69,6 +69,7 @@ service_client_req(sock_struct_t *curr,
     char msg[MAXLINE];
     socklen_t len;
    
+    signal(SIGALRM, timer_signal_handler);
     //memset(&rtt_s, 0, sizeof(rtt_s));
     rtt_init( &rtt_s );
     /* Starting with fd:3, close all fds except the one on listening */
@@ -122,30 +123,39 @@ service_client_req(sock_struct_t *curr,
      * send message to client giving the new port number 
      * using the listening socket. 
      */
-    /* TODO: Add TCP Time out mechanism here for this packet */
-    rtt_newpack( &rtt_s );
     snprintf(msg, sizeof(msg), "%d", htons(udpsock.sin_port));
-    rtt_start_timer( 2000 );//rtt_start( &rtt_s ) );
     sendto(curr->sockfd, (void *)msg, 
-	    sizeof(msg)+1, 0, (struct sockaddr *)cli_addr, sizeof(struct sockaddr));
-    printf("before signal\n\n");
+    	    sizeof(msg)+1, 0, (struct sockaddr *)cli_addr, sizeof(struct sockaddr));
+   
+    /* Initialize the retransmit count to 0. */
+    rtt_newpack( &rtt_s );
+
+    /* Start the timer. */
+    rtt_start_timer( rtt_start( &rtt_s ) );
     
+    /* Handle the timer signal, and retransmit. */
     if (sigsetjmp(jmp, 1) != 0) {
-        printf("\nreceived SIGALRM signal.\n");
+        
+        /* Check if maximum retransmits have already been sent. */
         if (rtt_timeout( &rtt_s ) == 0) {
-                printf("\nSending packet again.\n");
-                rtt_start_timer( 2000 );//rtt_start( &rtt_s ) );
+                printf("\n\n No communication from client; Sending packet again.\n");
+                rtt_start_timer( rtt_start( &rtt_s ) );
+                
+                /* Send the packet again. */
                 sendto(curr->sockfd, (void *)msg, 
 	            sizeof(msg)+1, 0, (struct sockaddr *)cli_addr, sizeof(struct sockaddr));
-                //TODO: send on the old port as well.
+                
+                /* Send on the old port as well. */
+                sendto(connect_fd, (void *)msg, 
+	            sizeof(msg)+1, 0, (struct sockaddr *)cli_addr, sizeof(struct sockaddr));
         }
+        /* Maximum number of retransmits sent; give up. */
         else{
-                printf("\nTimeout on second handshake. Goodbye client\n");
+                printf("\n Timeout on second handshake. Goodbye client\n");
                 return;
         }
     }
     
-    printf("before receive. \n\n");
     /* Receive final ack on new UDP port */
     n = recvfrom(connect_fd, msg, MAXLINE, 0, 
     		    (struct sockaddr *)cli_addr, &len);
@@ -179,7 +189,6 @@ listen_reqs (struct sock_struct *sock_struct_head) {
     
     len = sizeof(struct sockaddr_in);
     maxfd = -1; 
-    signal(SIGALRM, timer_signal_handler);
     for(curr = sock_struct_head; curr != NULL; curr = curr->nxt_struct) {
         FD_SET(curr->sockfd, &tempset);
         if (curr->sockfd > maxfd)

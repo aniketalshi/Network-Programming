@@ -98,16 +98,16 @@ get_client_ip (struct sock_struct *sock_struct_head,
 }
 
 void 
-cli_func (int sockfd, SA *srv_addr, socklen_t len) { 
+cli_func (int sockfd, SA *srv_addr, socklen_t len, char* file_name) { 
     char buf[MAXLINE]; 
     char sendline[MAXLINE];
 
-    sprintf(sendline, "test.txt");
+    //sprintf(sendline, file_name);
     Connect(sockfd, (SA *)srv_addr, len);
     //TODO: Print out server info calling getpeername
     
-    //write(sockfd, sendline, strlen(sendline));
-    write(sockfd, "test.txt", 8);
+    write(sockfd, file_name, strlen(file_name));
+    //write(sockfd, "test.txt", 8);
     
     /* Second Hand-shake receive new connection port from server
      * connect to this new port
@@ -123,7 +123,7 @@ cli_func (int sockfd, SA *srv_addr, socklen_t len) {
     sprintf(sendline, "ACK");
     
     /* Third Hand shake */
-    sleep(3);
+    sleep(5);
     Write(sockfd, sendline, strlen(sendline));
     
     /* Start reading data from client */
@@ -219,7 +219,7 @@ main(int argc, char* argv[]) {
     inet_pton (AF_INET, server_ip, &srv_addr.sin_addr);
 
     // First Hand-shake
-    cli_func (connect_fd, (SA *)&srv_addr, sizeof(srv_addr)); 
+    cli_func (connect_fd, (SA *)&srv_addr, sizeof(srv_addr), file_name); 
 
     return 0;
 }

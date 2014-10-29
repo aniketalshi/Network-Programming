@@ -275,12 +275,11 @@ read_data (int sockfd) {
     struct iovec recvvec[2];
     msg_hdr_t recv_msg_hdr;
     char buff[CHUNK_SIZE];
-
-    // printf("\n sizeof pckt: %d\n", sizeof(struct msghdr));
-    // printf("\n sizeof msg hdr: %d\n", sizeof(msg_hdr_t));
+    int cnt = 0;
     
     while (1) {
-	memset (&pcktmsg, 0, sizeof(struct msghdr));
+        
+        memset (&pcktmsg, 0, sizeof(struct msghdr));
     	memset (&recv_msg_hdr, 0, sizeof(msg_hdr_t));
     	memset (&buff, 0, CHUNK_SIZE);
     	
@@ -313,8 +312,16 @@ read_data (int sockfd) {
 
             // sending ack
             recv_msg_hdr.msg_type = __MSG_ACK;
+            recv_msg_hdr.seq_num += 1;
+            if (cnt == 3 || cnt == 4) {
+                cnt++;
+                continue;
+            }
+
             send_ack(sockfd, &recv_msg_hdr);
 	}
+
+        cnt++;
     }
     return;
 }

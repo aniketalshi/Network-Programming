@@ -41,11 +41,10 @@ send_file (conn_struct_t *conn, char *filename) {
 	return;
     }
     
+    printf("\n==========Starting File Transfer =============\n");
     /* read chunks of file */
-    while((n_bytes = read (file_d, send_buf, 512 * 10)) > 0) {
-    	//send_data(conn->conn_sockfd, (void *)send_buf, 
-   	//			    n_bytes, __MSG_FILE_DATA);
-        printf("\n bytes read %d", n_bytes); 
+    while((n_bytes = read (file_d, send_buf, CHUNK_SIZE * 10)) > 0) {
+        
         sending_func(conn->conn_sockfd, (void *)send_buf, n_bytes);
 	memset(send_buf, 0, CHUNK_SIZE);
     }
@@ -165,10 +164,13 @@ service_client_req(sock_struct_t *curr,
     n = recvfrom(connect_fd, msg, MAXLINE, 0, 
     		    (struct sockaddr *)cli_addr, &len);
     
+    /* Turn off the alarm */
+    rtt_start_timer(0);
+    
     printf("\n Received final ack from client on new port");
 
     /* Now we can close listening socket */
-    //close(curr->sockfd);
+    close(curr->sockfd);
 
     /* insert in conn_struct */
     conn = insert_conn_struct (connect_fd, &srv_addr , cli_addr, &conn_head);

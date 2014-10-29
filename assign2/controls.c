@@ -1,5 +1,7 @@
 #include "controls.h"
 #include "structs.h"
+#include "unprtt.h"
+#include <setjmp.h>
 
 #define PRINT_S(a)  print_s((snd_wndw_t *)a)
 #define PRINT_R(a)  print_r((recv_wndw_t *)a)
@@ -7,6 +9,12 @@
 #define PRINT_BUF(a,b) do {if((b) == SEND_BUF)  PRINT_S(a);\
                            if((b) == RECV_BUF)  PRINT_R(a);\
                         } while(0)
+
+static sigjmp_buf jmp;
+
+void sigalarm_handler(int signo){
+    siglongjmp(jmp, 1);
+}
 
 void
 print_s (snd_wndw_t *s) {
@@ -108,6 +116,8 @@ r_add_window (struct recv_window *recv_wndw,
 int 
 s_rem_window (struct sender_window *snd_wndw) {
     if (snd_wndw->free_sz < SEND_WINDOW_SIZE) {
+        // printf("\n Removing pckt %d", snd_wndw->buff[snd_wndw->win_tail]->seq_num);
+
         snd_wndw->buff[snd_wndw->win_tail] = NULL;
         snd_wndw->win_tail = (snd_wndw->win_tail + 1) %
                                         SEND_WINDOW_SIZE;
@@ -137,12 +147,20 @@ sending_func (int sockfd, void *read_buf, int bytes_rem) {
     int acks_pending = 0, seqnum = 0, offset = 0, iter;
     msg_hdr_t *hdr   = NULL;
     int bytes_to_copy = 0, snum = 0;
-    char buf_temp[CHUNK_SIZE];
     
-    int n_bytes, latest_ack = 0, count = 0, expected_ack = 0;
+    int n_bytes, count = 0, expected_ack = 0;
+    static int latest_ack = 0;
     struct msghdr pcktmsg;
     struct iovec recvvec[1];
     msg_hdr_t recv_msg_hdr;
+    struct rtt_info rtt_s;
+    
+    signal (SIGALRM, sigalarm_handler);
+    memset (&rtt_s, 0, sizeof(rtt_s));
+    rtt_init (&rtt_s);
+    
+    /* Initialize the retransmit count to 0. */
+    rtt_newpack (&rtt_s);
     
     // initialise the buffer
     snd_wndw_t *snd_wndw = s_window_init();
@@ -153,6 +171,8 @@ sending_func (int sockfd, void *read_buf, int bytes_rem) {
         while (snd_wndw->free_sz > 0 && bytes_rem > 0) {
 
             wndw_pckt_t *wndw_pckt = (wndw_pckt_t *)malloc(sizeof(wndw_pckt_t));
+            char *buf_temp         = (char *)malloc(CHUNK_SIZE);
+            
             bytes_to_copy = min(bytes_rem, CHUNK_SIZE);
             bytes_rem    -= bytes_to_copy;
             
@@ -176,13 +196,14 @@ sending_func (int sockfd, void *read_buf, int bytes_rem) {
 
         // DEBUG
         //PRINT_BUF(snd_wndw, SEND_BUF);
-        
+    
 send:
+        count = 0; 
         // send the packets
         for (iter = snd_wndw->win_tail; iter < snd_wndw->win_head;) {
             if (send_packet(sockfd, snd_wndw->buff[iter]->header, 
-                                     snd_wndw->buff[iter]->body, 
-                                     snd_wndw->buff[iter]->data_len) < 0) {
+                                    snd_wndw->buff[iter]->body, 
+                                    snd_wndw->buff[iter]->data_len) < 0) {
                 fprintf(stderr, "Error sending packet");	
                 return;
             }
@@ -192,8 +213,27 @@ send:
             iter = (iter + 1)%SEND_WINDOW_SIZE;
             count++;
         }
-        // TODO:start the timer
 
+        /* Start the timer. */
+        rtt_start_timer (rtt_start(&rtt_s));
+       
+
+        /* Handle the timer signal, and retransmit. */
+        if (sigsetjmp(jmp, 1) != 0) {
+            
+            /* Check if maximum retransmits have already been sent. */
+            if (rtt_timeout(&rtt_s) == 0) {
+                printf("\nTime out. Retransmitting\n");
+                rtt_start_timer (rtt_start(&rtt_s));
+                
+                goto process_acks;
+            } else{
+                /* Maximum number of retransmits sent; give up. */
+                printf("\n Client not responding. Terminating connection\n");
+                return;
+            }
+        }
+    
         // wait to receive acks
         while (count) {
             memset (&pcktmsg, 0, sizeof(struct msghdr));
@@ -214,6 +254,7 @@ send:
                 break; 
             }
 
+            printf("\n Rcvd ACK. Seq Num : %d", recv_msg_hdr.seq_num);
             /* If type of message is ACK, check seq num 
             *  TODO: if same ack no is received increment ackcnt
             *        if it reaches 3, we can do fast retransmit 
@@ -222,11 +263,12 @@ send:
                 recv_msg_hdr.seq_num >= latest_ack) {
                 
                 latest_ack = recv_msg_hdr.seq_num;
-                //printf("\nDebug Ack Received");
             }
             count--;
         }
         // stop the timer here
+        /* Turn off the alarm */
+        rtt_start_timer(0);
 
 process_acks:
         // process the acks 
@@ -236,8 +278,8 @@ process_acks:
             if (snd_wndw->free_sz < SEND_WINDOW_SIZE) {
                 snum = snd_wndw->buff[snd_wndw->win_tail]->seq_num;
                 
-                printf("\n Rcvd ACK Seq Num : %d", snum);
-                if(snum > latest_ack)
+                //printf("\n DEBUG %d, Rcvd ACK Seq Num : %d", latest_ack, snum);
+                if(snum >= latest_ack)
                     break;
 
                 //printf("\n Rcvd ACK Seq Num : %d", snum);
@@ -255,6 +297,3 @@ process_acks:
 
     free(snd_wndw);
 }
-
-
-

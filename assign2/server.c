@@ -72,7 +72,7 @@ service_client_req(sock_struct_t *curr,
     socklen_t len;
    
     signal(SIGALRM, timer_signal_handler);
-    memset(&rtt_s, 0, sizeof(rtt_s));
+    memset(&rtt_s, 0, sizeof(struct rtt_info));
     rtt_init( &rtt_s );
     
     /* Starting with fd:3, close all fds except the one on listening */

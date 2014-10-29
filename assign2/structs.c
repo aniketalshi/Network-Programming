@@ -224,6 +224,18 @@ msg_hdr_t
     return msg;
 }
 
+msg_hdr_t 
+*get_ack_hdr (uint32_t seq_num, unsigned long ts, uint32_t ws) {
+
+    msg_hdr_t *msg = (msg_hdr_t *)malloc(sizeof(struct msg_hdr));
+    msg->msg_type  = __MSG_ACK;
+    msg->seq_num   = seq_num;
+    msg->timestamp = ts;
+    msg->win_size  = ws;
+
+    return msg;
+}
+
 /* Function to construct packet 
  * and send packet */
 int
@@ -267,21 +279,18 @@ send_data (int sockfd, void *buf, int len, int ftype) {
 }
 
 /* Data reading logic will go here */
-void
-read_data (int sockfd) {
+int
+read_data (int sockfd, int *seqnum, msg_hdr_t *recv_msg_hdr, void *body, int *len) {
 
     int n_bytes;
     struct msghdr pcktmsg;
+    //wndw_pckt_t *r_win_pckt;
     struct iovec recvvec[2];
-    msg_hdr_t recv_msg_hdr;
-    char buff[CHUNK_SIZE];
     int cnt = 1;
     
-    while (1) {
         
         memset (&pcktmsg, 0, sizeof(struct msghdr));
-    	memset (&recv_msg_hdr, 0, sizeof(msg_hdr_t));
-    	memset (&buff, 0, CHUNK_SIZE);
+        //r_win_pckt = malloc( sizeof(wndw_pckt_t));
     	
     	pcktmsg.msg_name     = NULL;
     	pcktmsg.msg_namelen  = 0;
@@ -289,34 +298,58 @@ read_data (int sockfd) {
     	pcktmsg.msg_iovlen   = 2;
 
     	recvvec[0].iov_len   = sizeof(msg_hdr_t);
-    	recvvec[0].iov_base  = (void *)&recv_msg_hdr;
+    	recvvec[0].iov_base  = (msg_hdr_t *)recv_msg_hdr;
     	recvvec[1].iov_len   = CHUNK_SIZE;
-    	recvvec[1].iov_base  = (void *)buff;
+    	recvvec[1].iov_base  = (void *)body;
 
     	n_bytes = recvmsg(sockfd, &pcktmsg, 0);
 	
 	if (n_bytes <= 0) {
 	    printf ("\n Connection Terminated");
-	    break; 
+	    return 0;
 	}
+        
+	///* IF type of message is FIN, we are done */
+	//if (recv_msg_hdr->msg_type ==  __MSG_FIN) {
+	//    printf ("\n\n****** File transfer completed *****\n");
+	//    return; 
+	//}
 
-	/* IF type of message is FIN, we are done */
-	if (recv_msg_hdr.msg_type ==  __MSG_FIN) {
-	    printf ("\n\n****** File transfer completed *****\n");
-	    break; 
-	}
+        *seqnum = recv_msg_hdr->seq_num;
+        *len    = CHUNK_SIZE;
 
-	if (recv_msg_hdr.msg_type ==  __MSG_FILE_DATA) {
-	    buff[n_bytes] = '\0';
-	    puts (buff);
 
-            // sending ack
-            recv_msg_hdr.msg_type = __MSG_ACK;
-            recv_msg_hdr.seq_num  += 1;
-            send_ack(sockfd, &recv_msg_hdr);
-	}
 
-    }
+        //if (recv_msg_hdr->msg_type ==  __MSG_FILE_DATA) {
+	//    //(char *)body[n_bytes] = '\0';
+	//    puts ((char *)body);
+
+
+        //    printf("Received packet with sequence number: %d", recv_msg_hdr->seq_num);
+        //    /* Add packets to window */
+        //    printf("\n packet: %d\n", recv_msg_hdr->seq_num);
+        //    //r_win_pckt->seq_num  = recv_msg_hdr.seq_num;
+        //    *seqnum = recv_msg_hdr->seq_num;
+        //    
+        //    //header   = recv_msg_hdr;
+        //    
+        //    //body     = buff;
+        //    *len     = CHUNK_SIZE;
+        //    
+        //    //r_win_pckt->data_len = CHUNK_SIZE;
+        //    //printf("\n%d -- %d\n", r_win_pckt->seq_num, r_win->exp_seq);        
+        //    //printf("here0\n");
+        //    //r_add_window (r_win, r_win_pckt);
+        //    //
+        //    //// sending ack
+        //    //
+        //    //printf("here1\n");
+        //    //recv_msg_hdr.msg_type = __MSG_ACK;
+        //    //recv_msg_hdr.seq_num = r_win->exp_seq;
+        //    //send_ack (sockfd, &recv_msg_hdr);
+        //    //r_rem_window (r_win);
+
+        //}
     return;
 }
 
@@ -324,7 +357,7 @@ read_data (int sockfd) {
  * and send packet */
 int
 send_ack (int sockfd, msg_hdr_t *header) {
-
+    
     struct msghdr pcktmsg;
     struct iovec sendvec[1];
     int nbytes;
@@ -344,6 +377,6 @@ send_ack (int sockfd, msg_hdr_t *header) {
 	return nbytes;
     }
     
-    printf("\n Ack Sent %d", header->seq_num);
+    printf("\n Ack Sent %d\n", header->seq_num);
     return nbytes;
 }

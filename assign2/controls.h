@@ -24,14 +24,19 @@ typedef struct sender_window {
     int free_sz;                          // free slots avail
 }snd_wndw_t;
 
+typedef struct buff_entry {
+    int is_valid;
+    wndw_pckt_t *entry;
+}buff_entry_t;
 
 typedef struct recv_window {
-    wndw_pckt_t *buff [RECV_WINDOW_SIZE]; // Circular buff
+    buff_entry_t buff [RECV_WINDOW_SIZE]; // Circular buff
     int win_head;                         // Head of buff
     int win_tail;                         // Tail of buff
     int free_slt;
     int last_ack;                         // index of cell with last ack sent
     int num_occ;                          // num of cells occupied
+    long int exp_seq; 
 }recv_wndw_t;
 
 
@@ -40,8 +45,11 @@ recv_wndw_t *r_window_init  ();
 
 int  s_add_window   (struct sender_window *snd_wndw,   
                      struct window_pckt *pckt);        /* to add a new pckt to send window */
-int  r_add_window   (struct recv_window *recv_wndw,    
-                     struct window_pckt *pckt);        /* to add a new pckt to recv window */
+int r_add_window    (int sockfd, struct recv_window *recv_wndw,    
+                     struct window_pckt *pckt);
+
+
+
 
 int  s_rem_window   (struct sender_window *snd_wndw);  /* remove pckt from send window */
 int  r_rem_window   (struct recv_window *recv_wndw);   /* remove pckt from recv window */
@@ -49,10 +57,11 @@ int  r_rem_window   (struct recv_window *recv_wndw);   /* remove pckt from recv 
 /* Main sending logic */
 void sending_func (int sockfd, void *read_buf, int bytes_rem);
 
-/* Main receiving logic */
-void receiving_func (void *read_buf);
 
 /* To get next seq num */
 long int get_seq_num ();
 
+void* receiving_func (void* data);
+
+void* consumer_func ();
 #endif /* __CONTROLS_H */

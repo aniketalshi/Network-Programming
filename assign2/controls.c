@@ -10,6 +10,8 @@
                            if((b) == RECV_BUF)  PRINT_R(a);\
                         } while(0)
 
+struct recv_window *r_win;
+volatile should_terminate = 0;
 static sigjmp_buf jmp;
 
 void sigalarm_handler(int signo){
@@ -29,7 +31,7 @@ void
 print_r (recv_wndw_t *s) {
     int iter;
     for (iter = s->win_tail; iter < s->win_head; ) {
-        printf("\n Pckt %d, Seq num: %d", iter, s->buff[iter]->seq_num);
+        printf("\n Pckt %d, Seq num: %d", iter, s->buff[iter].entry->seq_num);
         iter = (iter + 1)%RECV_WINDOW_SIZE;
     }
 }
@@ -37,7 +39,7 @@ print_r (recv_wndw_t *s) {
 /* To get next seq num */
 long int 
 get_seq_num() {
-    static long int seq_num = 111;
+    static long int seq_num = 110;
     return ++seq_num;
 }
 
@@ -58,14 +60,15 @@ s_window_init () {
 recv_wndw_t *
 r_window_init () {
     
-    recv_wndw_t *recv_wndw = (recv_wndw_t *)malloc(sizeof(recv_wndw_t));
+    recv_wndw_t *recv_wndw = (recv_wndw_t *)calloc(1, sizeof(recv_wndw_t));
 
-    memset (recv_wndw->buff, 0, RECV_WINDOW_SIZE);
-    recv_wndw->win_head  = 0;
+    //memset (recv_wndw->buff, 0, RECV_WINDOW_SIZE);
+    recv_wndw->win_head  = -1;
     recv_wndw->win_tail  = 0;
     recv_wndw->last_ack  = 0;
     recv_wndw->free_slt  = RECV_WINDOW_SIZE;
     recv_wndw->num_occ   = 0;
+    recv_wndw->exp_seq   = 111;
 
     return recv_wndw;
 }
@@ -84,38 +87,87 @@ s_add_window (struct sender_window *snd_wndw, struct window_pckt *pckt) {
     return 0;
 }
 
-/* to add a new pckt to recv window */
-int  
-r_add_window (struct recv_window *recv_wndw,    
-                   struct window_pckt *pckt) {
-    int num = 0; 
+void
+send_ack_func(int sockfd, recv_wndw_t *recv_wndw, unsigned long ts) {
     
-    // if queue is empty
-    if (!recv_wndw->buff[recv_wndw->win_head]) {
-        recv_wndw->buff[recv_wndw->win_head] = pckt;
-        num = 1;
-    
-    } else {
-        // check diff of seq nums between current packt and pckt at head
-        // is less than equal to avail free slots
-        num = recv_wndw->buff[recv_wndw->win_head]->seq_num - pckt->seq_num;
-        if (recv_wndw->free_slt < num) {
-            printf ("\n Discarding packet with seq num %d,"
-                                "no free slots avail", pckt->seq_num);
-            return 0; 
-        }
+    while(recv_wndw->buff[recv_wndw->last_ack].is_valid) {
+        recv_wndw->exp_seq = 
+                  recv_wndw->buff[recv_wndw->last_ack].entry->seq_num + 1;
+        
+        recv_wndw->last_ack = (recv_wndw->last_ack + 1) %
+                                             RECV_WINDOW_SIZE;
     }
-    
-    recv_wndw->win_head = (recv_wndw->win_head + num) % 
-                                               RECV_WINDOW_SIZE;
-    recv_wndw->free_slt -= num;
-    recv_wndw->num_occ--;
+
+    msg_hdr_t *hdr = get_ack_hdr(recv_wndw->exp_seq, ts, 0); 
+    send_ack(sockfd, hdr);
 }
+
+int
+r_add_window (int sockfd, struct recv_window *recv_wndw,    
+                   struct window_pckt *pckt) {
+    int diff = 0; 
+    // If head is empty
+    if (recv_wndw->free_slt == RECV_WINDOW_SIZE) {
+
+        recv_wndw->win_head = (recv_wndw->win_head + 1) %
+                                             RECV_WINDOW_SIZE;
+
+
+        recv_wndw->buff[recv_wndw->win_head].is_valid = 1; 
+        recv_wndw->buff[recv_wndw->win_head].entry = pckt;
+        
+        recv_wndw->free_slt--;
+        send_ack_func(sockfd, recv_wndw, pckt->time_st);
+        return 1;
+    }
+
+    // if this is new beyond head
+    if (recv_wndw->buff[recv_wndw->win_head].entry->seq_num <
+                                pckt->seq_num) {
+        diff = pckt->seq_num - 
+                recv_wndw->buff[recv_wndw->win_head].entry->seq_num;
+        
+        if (diff > recv_wndw->free_slt) {
+            fprintf(stderr,"\n Sorry no place in buffer ");
+            return 0;
+        }
+        
+        recv_wndw->free_slt -= diff;
+        recv_wndw->win_head = (recv_wndw->win_head + diff) %
+                                             RECV_WINDOW_SIZE;
+
+        recv_wndw->buff[recv_wndw->win_head].is_valid = 1; 
+        recv_wndw->buff[recv_wndw->win_head].entry = pckt;
+        
+        send_ack_func(sockfd, recv_wndw, pckt->time_st);
+        return 1;
+    } else {
+        
+        // if diff is negative
+        diff = (recv_wndw->win_tail + (pckt->seq_num - 
+                        recv_wndw->buff[recv_wndw->win_tail].entry->seq_num)) % RECV_WINDOW_SIZE;
+        
+        if (pckt->seq_num < recv_wndw->exp_seq) {
+            fprintf(stderr,"\n Duplicated Packet. Already Acked");
+            return 0;
+        }
+
+        if(recv_wndw->buff[diff].is_valid == 0) {
+            recv_wndw->buff[diff].is_valid = 1;
+            recv_wndw->buff[diff].entry = pckt;
+        }
+        send_ack_func(sockfd, recv_wndw, pckt->time_st);
+        return 1;
+    }
+
+}
+
+
 
 /* remove pckt from sending window */
 int 
 s_rem_window (struct sender_window *snd_wndw) {
-    if (snd_wndw->free_sz < SEND_WINDOW_SIZE) {
+    if (snd_wndw->free_sz < RECV_WINDOW_SIZE) {
         // printf("\n Removing pckt %d", snd_wndw->buff[snd_wndw->win_tail]->seq_num);
 
         snd_wndw->buff[snd_wndw->win_tail] = NULL;
@@ -130,8 +182,11 @@ s_rem_window (struct sender_window *snd_wndw) {
 /* remove pckt from recv window */
 int 
 r_rem_window (struct recv_window *recv_wndw) {
+    
     if (recv_wndw->free_slt < RECV_WINDOW_SIZE) {
-        recv_wndw->buff[recv_wndw->win_tail] = NULL;
+        
+        recv_wndw->buff[recv_wndw->win_tail].is_valid = 0;
+        recv_wndw->buff[recv_wndw->win_tail].entry = NULL;
         recv_wndw->win_tail = (recv_wndw->win_tail + 1) %
                                         RECV_WINDOW_SIZE;
         recv_wndw->free_slt++;
@@ -140,23 +195,34 @@ r_rem_window (struct recv_window *recv_wndw) {
     return 0;
 }
 
-#if 0
-void consumer_func (struct recv_window *recv_wndw) {
-    char *buf = (char *)malloc(CHUNK_SIZE + 1); 
+
+void* consumer_func () {
+    char buf[CHUNK_SIZE+1];
+    memset(buf, 0, sizeof(buf));
     int len = 0;
     
     /* iterate from tail to last ack and remove them from buff */
-    while (recv_wndw->wndw_tail < recv_wndw->last_ack) {
-        len = recv_wndw->buff[recv_wndw->win_tail].entry->data_len;
-        // read the entry at tail
-        memcpy(buf, recv_wndw->buff[recv_wndw->win_tail].entry->body, len);
-        buf[len] = '\0';
-        puts(buf);
-        // remove entry from tail
-        r_rem_window(recv_wndw);
+    while(should_terminate == 0) {
+        
+        while ( r_win->buff[r_win->win_tail].is_valid == 1 &&
+            r_win->buff[r_win->win_tail].entry->seq_num <= r_win->exp_seq) {
+            
+            len = r_win->buff[r_win->win_tail].entry->data_len;
+            
+            // read the entry at tail
+            if(!r_win->buff[r_win->win_tail].entry->body) {
+                fprintf(stderr, "No content in packet to be read");
+                break;
+            }
+            memcpy(buf, r_win->buff[r_win->win_tail].entry->body, len);
+            printf("%s\n",buf);
+            
+            // remove entry from tail
+            r_rem_window(r_win);
+        }
     }
+    exit(0);
 }
-#endif
 
 /* Function to handle sending logic */
 void
@@ -214,14 +280,22 @@ sending_func (int sockfd, void *read_buf, int bytes_rem) {
 
         // DEBUG
         //PRINT_BUF(snd_wndw, SEND_BUF);
-    
+        static int flag = 1; 
 send:
         count   = 0; 
         ack_cnt = 0;
         
         // send the packets
         for (iter = snd_wndw->win_tail; iter < snd_wndw->win_head;) {
-            
+
+            /* Test Code */
+            if(snd_wndw->buff[iter]->seq_num == 112 && flag) {
+                iter = (iter + 1)%SEND_WINDOW_SIZE;
+                count++;
+                flag = 0;
+                continue;
+            }
+
             if (send_packet(sockfd, snd_wndw->buff[iter]->header, 
                                     snd_wndw->buff[iter]->body, 
                                     snd_wndw->buff[iter]->data_len) < 0) {
@@ -337,4 +411,50 @@ process_acks:
     }
 
     free(snd_wndw);
+}
+
+void*
+receiving_func (void* data) {
+    
+    int sockfd = *(int *)data;
+    wndw_pckt_t *r_win_pckt;
+    r_win = r_window_init(); 
+    char *body;
+    int seqnum = 0, len = 0;
+
+    msg_hdr_t *recv_msg_hdr = (msg_hdr_t *)malloc(sizeof(msg_hdr_t));
+   
+
+    while(1) {
+        r_win_pckt = (wndw_pckt_t *)calloc (1, sizeof(wndw_pckt_t));
+        body = (char *)calloc(1, CHUNK_SIZE + 1);
+        
+        memset(recv_msg_hdr, 0, sizeof(msg_hdr_t));
+
+        read_data (sockfd, &seqnum, recv_msg_hdr, body, &len);
+        body[len-1] = '\0';
+        
+        //printf ("\n seq %d, %d, %d\n",seqnum, recv_msg_hdr->seq_num, len);
+        
+        /* IF type of message is FIN, we are done */
+	if (recv_msg_hdr->msg_type ==  __MSG_FIN) {
+	    printf ("\n\n****** File transfer completed *****\n");
+            should_terminate = 1;
+	    break;
+	}
+        
+        // Insert the packet in receiving window
+	if (recv_msg_hdr->msg_type ==  __MSG_FILE_DATA) {
+
+            r_win_pckt->seq_num  = recv_msg_hdr->seq_num;
+            r_win_pckt->time_st  = recv_msg_hdr->timestamp;
+            r_win_pckt->data_len = CHUNK_SIZE;
+            r_win_pckt->body     = body;
+            r_add_window (sockfd, r_win, r_win_pckt);
+        }
+    }
+    
+    // TODO: Consumer func works here without threading
+    //consumer_func();
+    exit(0);
 }

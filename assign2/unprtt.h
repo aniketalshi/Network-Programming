@@ -24,6 +24,7 @@ int       rtt_start(struct rtt_info *);
 void 	  rtt_stop(struct rtt_info *, uint32_t);
 int       rtt_timeout(struct rtt_info *);
 uint32_t  rtt_ts(struct rtt_info *);
+void rtt_start_timer(long int ms);
 
 extern int	rtt_d_flag;	/* can be set to nonzero for addl info */
 

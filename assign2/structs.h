@@ -72,10 +72,15 @@ conn_struct_t * insert_conn_struct (int conn_sockfd,
 /* To construct a msg hdr */
 msg_hdr_t *get_hdr (int msg_type, uint32_t seq_num, uint32_t ws);
 
+/* To construct ack msg hdr */
+msg_hdr_t *get_ack_hdr (uint32_t seq_num, unsigned long ts, uint32_t ws);
+
 /* Logic too send data */
 void  send_data (int sockfd, void *buf, int len, int ftype);
 
 /* Logic to read data */
-void  read_data (int sockfd);
+//void  read_data (int sockfd);
+int
+read_data (int sockfd, int *seqnum, msg_hdr_t *recv_msg_hdr, void *body, int *len);
 
 #endif /* __structs_h */

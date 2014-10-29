@@ -2,13 +2,16 @@
 #include <stdlib.h>
 #include <string.h>
 #include "structs.h"
+#include "controls.h"
+#include "rtt.c"
 
 #define BYTE 8
 extern struct ifi_info *Get_ifi_info_plus(int family, int doaliases);
 extern void free_ifi_info_plus(struct ifi_info *ifihead);
 struct sock_struct *sock_struct_head;
 
-
+pthread_t cons_thread;
+pthread_t prod_thread;
 /* get the total number of preceding bits set in a number */
 int
 get_bits(long number){
@@ -92,8 +95,12 @@ cli_func (int sockfd, SA *srv_addr, socklen_t len, char* file_name) {
     
     /* Start reading data from client */
     //TODO: spwan two threads consumer and producer
+    pthread_create(&prod_thread, NULL, receiving_func, (void *)&sockfd);
+    pthread_create(&cons_thread, NULL, consumer_func, NULL);
     
-    read_data(sockfd);
+    pthread_join(prod_thread, NULL);
+    pthread_join(cons_thread, NULL);
+    //receiving_func((void *)&sockfd);
 }
 
 int 

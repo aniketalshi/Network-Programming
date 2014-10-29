@@ -4,6 +4,7 @@
 
 #define SEND_WINDOW_SIZE        10
 #define RECV_WINDOW_SIZE        10
+#define MAX_ACK_CNT             3
 
 enum TYPE {SEND_BUF, RECV_BUF};
 
@@ -22,6 +23,7 @@ typedef struct sender_window {
     int win_tail;                         // Tail of buff 
     int free_sz;                          // free slots avail
 }snd_wndw_t;
+
 
 typedef struct recv_window {
     wndw_pckt_t *buff [RECV_WINDOW_SIZE]; // Circular buff

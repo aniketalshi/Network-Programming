@@ -140,6 +140,24 @@ r_rem_window (struct recv_window *recv_wndw) {
     return 0;
 }
 
+#if 0
+void consumer_func (struct recv_window *recv_wndw) {
+    char *buf = (char *)malloc(CHUNK_SIZE + 1); 
+    int len = 0;
+    
+    /* iterate from tail to last ack and remove them from buff */
+    while (recv_wndw->wndw_tail < recv_wndw->last_ack) {
+        len = recv_wndw->buff[recv_wndw->win_tail].entry->data_len;
+        // read the entry at tail
+        memcpy(buf, recv_wndw->buff[recv_wndw->win_tail].entry->body, len);
+        buf[len] = '\0';
+        puts(buf);
+        // remove entry from tail
+        r_rem_window(recv_wndw);
+    }
+}
+#endif
+
 /* Function to handle sending logic */
 void
 sending_func (int sockfd, void *read_buf, int bytes_rem) {
@@ -148,7 +166,7 @@ sending_func (int sockfd, void *read_buf, int bytes_rem) {
     msg_hdr_t *hdr   = NULL;
     int bytes_to_copy = 0, snum = 0;
     
-    int n_bytes, count = 0, expected_ack = 0;
+    int n_bytes, count = 0, expected_ack = 0, ack_cnt = 0;
     static int latest_ack = 0;
     struct msghdr pcktmsg;
     struct iovec recvvec[1];
@@ -198,9 +216,12 @@ sending_func (int sockfd, void *read_buf, int bytes_rem) {
         //PRINT_BUF(snd_wndw, SEND_BUF);
     
 send:
-        count = 0; 
+        count   = 0; 
+        ack_cnt = 0;
+        
         // send the packets
         for (iter = snd_wndw->win_tail; iter < snd_wndw->win_head;) {
+            
             if (send_packet(sockfd, snd_wndw->buff[iter]->header, 
                                     snd_wndw->buff[iter]->body, 
                                     snd_wndw->buff[iter]->data_len) < 0) {
@@ -255,14 +276,34 @@ send:
             }
 
             printf("\n Rcvd ACK. Seq Num : %d", recv_msg_hdr.seq_num);
+            
             /* If type of message is ACK, check seq num 
             *  TODO: if same ack no is received increment ackcnt
             *        if it reaches 3, we can do fast retransmit 
             */
             if (recv_msg_hdr.msg_type ==  __MSG_ACK &&
-                recv_msg_hdr.seq_num >= latest_ack) {
+                recv_msg_hdr.seq_num > latest_ack) {
                 
                 latest_ack = recv_msg_hdr.seq_num;
+                ack_cnt    = 1;
+    
+            } else if (recv_msg_hdr.seq_num == latest_ack) {
+                ack_cnt++;
+                
+                if (ack_cnt > MAX_ACK_CNT) {
+                    printf ("\n Received third ack for Seq Num %d."
+                            "Doing fast retransmit", latest_ack);
+                    
+                    while ((snd_wndw->buff[snd_wndw->win_tail]->seq_num < 
+                                                    recv_msg_hdr.seq_num) && 
+                                                    snd_wndw->free_sz < SEND_WINDOW_SIZE) {
+                        
+                        s_rem_window(snd_wndw);
+                    }
+                    rtt_start_timer(0); 
+                    goto send;
+                }
+
             }
             count--;
         }

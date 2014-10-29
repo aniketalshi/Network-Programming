@@ -2,7 +2,7 @@
 #include "structs.h"
 #include "unprtt.h"
 
-#define SRV_FILE      "server.in"
+#define SRV_FILE    "server.in"
 #define CLI_FILE    "client.in"
 
 struct rtt_info rtts;
@@ -275,7 +275,7 @@ read_data (int sockfd) {
     struct iovec recvvec[2];
     msg_hdr_t recv_msg_hdr;
     char buff[CHUNK_SIZE];
-    int cnt = 0;
+    int cnt = 1;
     
     while (1) {
         
@@ -312,16 +312,10 @@ read_data (int sockfd) {
 
             // sending ack
             recv_msg_hdr.msg_type = __MSG_ACK;
-            recv_msg_hdr.seq_num += 1;
-            if (cnt == 3 || cnt == 4) {
-                cnt++;
-                continue;
-            }
-
+            recv_msg_hdr.seq_num  += 1;
             send_ack(sockfd, &recv_msg_hdr);
 	}
 
-        cnt++;
     }
     return;
 }

@@ -60,7 +60,7 @@ rtt_init(struct rtt_info *ptr)
 uint32_t
 rtt_ts(struct rtt_info *ptr)
 {
-	uint32_t		ts;
+	uint32_t ts;
 	struct timeval	tv;
 
 	Gettimeofday(&tv, NULL);

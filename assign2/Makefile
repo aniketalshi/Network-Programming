@@ -21,7 +21,7 @@ server: server.o structs.o get_ifi_info_plus.o controls.o
 server.o: server.c
 	${CC} ${CFLAGS} -c server.c
 
-client: client.o client.o get_ifi_info_plus.o
+client: client.o client.o get_ifi_info_plus.o 
 	${CC} ${FLAGS} -o client client.o structs.o get_ifi_info_plus.o ${LIBS}
 client.o: client.c
 	${CC} ${CFLAGS} -c client.c
@@ -37,5 +37,5 @@ controls.o: controls.c
 
 clean:
 	rm client prifinfo_plus server prifinfo_plus.o get_ifi_info_\
-	plus.o server.o structs.o client.o rtt.o controls.o
+	plus.o server.o structs.o client.o controls.o
 

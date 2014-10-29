@@ -5,6 +5,8 @@
 #define SEND_WINDOW_SIZE        10
 #define RECV_WINDOW_SIZE        10
 
+enum TYPE {SEND_BUF, RECV_BUF};
+
 typedef struct window_pckt {
     unsigned long  time_st;     // Time Stamp
     uint32_t       seq_num;     // Seq num on pckt
@@ -31,8 +33,8 @@ typedef struct recv_window {
 }recv_wndw_t;
 
 
-void s_window_init  (struct sender_window *snd_wndw);  /* window init */
-void r_window_init  (struct recv_window *recv_wndw);
+snd_wndw_t  *s_window_init  ();  /* window init */
+recv_wndw_t *r_window_init  ();
 
 int  s_add_window   (struct sender_window *snd_wndw,   
                      struct window_pckt *pckt);        /* to add a new pckt to send window */

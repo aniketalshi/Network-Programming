@@ -90,7 +90,7 @@ cli_func (int sockfd, SA *srv_addr, socklen_t len, char* file_name) {
     sprintf(sendline, "ACK");
     
     /* Third Hand shake */
-    sleep(5);
+    //sleep(5);
     Write(sockfd, sendline, strlen(sendline));
     
     /* Start reading data from client */

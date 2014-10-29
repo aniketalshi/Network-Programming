@@ -1,6 +1,31 @@
 #include "controls.h"
 #include "structs.h"
 
+#define PRINT_S(a)  print_s((snd_wndw_t *)a)
+#define PRINT_R(a)  print_r((recv_wndw_t *)a)
+
+#define PRINT_BUF(a,b) do {if((b) == SEND_BUF)  PRINT_S(a);\
+                           if((b) == RECV_BUF)  PRINT_R(a);\
+                        } while(0)
+
+void
+print_s (snd_wndw_t *s) {
+    int iter;
+    for (iter = s->win_tail; iter < s->win_head;) {
+        printf("\n SPckt %d, Seq num: %d", iter, s->buff[iter]->seq_num);
+        iter = (iter + 1)%SEND_WINDOW_SIZE;
+    }
+}
+
+void
+print_r (recv_wndw_t *s) {
+    int iter;
+    for (iter = s->win_tail; iter < s->win_head; ) {
+        printf("\n Pckt %d, Seq num: %d", iter, s->buff[iter]->seq_num);
+        iter = (iter + 1)%RECV_WINDOW_SIZE;
+    }
+}
+
 /* To get next seq num */
 long int 
 get_seq_num() {
@@ -9,25 +34,32 @@ get_seq_num() {
 }
 
 /* sending window init */
-void 
-s_window_init (struct sender_window *snd_wndw) {
+snd_wndw_t *
+s_window_init () {
+    snd_wndw_t *snd_wndw = (snd_wndw_t *)malloc(sizeof(snd_wndw_t));
     
     memset (snd_wndw->buff, 0, (size_t)SEND_WINDOW_SIZE);
     snd_wndw->win_head = 0;
     snd_wndw->win_tail = 0;
     snd_wndw->free_sz  = SEND_WINDOW_SIZE;
+
+    return snd_wndw;
 }
 
 /* Receving window init */
-void 
-r_window_init (struct recv_window *recv_wndw) {
+recv_wndw_t *
+r_window_init () {
     
+    recv_wndw_t *recv_wndw = (recv_wndw_t *)malloc(sizeof(recv_wndw_t));
+
     memset (recv_wndw->buff, 0, RECV_WINDOW_SIZE);
     recv_wndw->win_head  = 0;
     recv_wndw->win_tail  = 0;
     recv_wndw->last_ack  = 0;
     recv_wndw->free_slt  = RECV_WINDOW_SIZE;
     recv_wndw->num_occ   = 0;
+
+    return recv_wndw;
 }
 
 /* to add a new pckt to window */
@@ -104,57 +136,62 @@ sending_func (int sockfd, void *read_buf, int bytes_rem) {
     
     int acks_pending = 0, seqnum = 0, offset = 0, iter;
     msg_hdr_t *hdr   = NULL;
-    wndw_pckt_t wndw_pckt;
-    int bytes_to_copy = 0;
+    int bytes_to_copy = 0, snum = 0;
     char buf_temp[CHUNK_SIZE];
     
     int n_bytes, latest_ack = 0, count = 0, expected_ack = 0;
     struct msghdr pcktmsg;
     struct iovec recvvec[1];
     msg_hdr_t recv_msg_hdr;
-    snd_wndw_t *snd_wndw;
     
     // initialise the buffer
-    s_window_init(snd_wndw);
+    snd_wndw_t *snd_wndw = s_window_init();
     
     while (bytes_rem) {
                 
         // fill in the buffer till we can
-        while (snd_wndw->free_sz > 0) {
+        while (snd_wndw->free_sz > 0 && bytes_rem > 0) {
 
+            wndw_pckt_t *wndw_pckt = (wndw_pckt_t *)malloc(sizeof(wndw_pckt_t));
             bytes_to_copy = min(bytes_rem, CHUNK_SIZE);
             bytes_rem    -= bytes_to_copy;
             
             memset(buf_temp, 0, CHUNK_SIZE);
+            bzero(wndw_pckt, sizeof(struct window_pckt));
+            
             memcpy(buf_temp, read_buf + offset, bytes_to_copy);
-            bzero(&wndw_pckt, sizeof(struct window_pckt));
+            offset += bytes_to_copy;
                 
-            seqnum             = get_seq_num();
-            wndw_pckt.seq_num  = seqnum;
-            wndw_pckt.sent_cnt = 0;
-            wndw_pckt.body     = buf_temp;
-            wndw_pckt.data_len = bytes_to_copy;
-            wndw_pckt.header   = get_hdr(__MSG_FILE_DATA, seqnum, 0);
+            seqnum              = get_seq_num();
+            wndw_pckt->seq_num  = seqnum;
+            wndw_pckt->sent_cnt = 0;
+            wndw_pckt->body     = buf_temp;
+            wndw_pckt->data_len = bytes_to_copy;
+            wndw_pckt->header   = get_hdr(__MSG_FILE_DATA, seqnum, 0);
 
-            s_add_window(snd_wndw, &wndw_pckt);
+            s_add_window(snd_wndw, wndw_pckt);
         }
         
-        expected_ack = seqnum + 1;
+        expected_ack = snd_wndw->buff[snd_wndw->win_head]->seq_num;
+
+        // DEBUG
+        //PRINT_BUF(snd_wndw, SEND_BUF);
         
 send:
         // send the packets
-        for (iter = snd_wndw->win_tail; iter <= snd_wndw->win_head; ++iter) {
-            if ((send_packet(sockfd, snd_wndw->buff[iter]->header, 
+        for (iter = snd_wndw->win_tail; iter < snd_wndw->win_head;) {
+            if (send_packet(sockfd, snd_wndw->buff[iter]->header, 
                                      snd_wndw->buff[iter]->body, 
-                                     snd_wndw->buff[iter]->data_len)) < 0) {
+                                     snd_wndw->buff[iter]->data_len) < 0) {
                 fprintf(stderr, "Error sending packet");	
                 return;
             }
-            printf("\n Seq Num: %d, Bytes send: %d", snd_wndw->buff[iter]->seq_num, 
+            printf("\n %d Seq Num: %d, Bytes send: %d", iter, snd_wndw->buff[iter]->seq_num, 
                                                 snd_wndw->buff[iter]->data_len);
+
+            iter = (iter + 1)%SEND_WINDOW_SIZE;
             count++;
         }
-         
         // TODO:start the timer
 
         // wait to receive acks
@@ -182,22 +219,28 @@ send:
             *        if it reaches 3, we can do fast retransmit 
             */
             if (recv_msg_hdr.msg_type ==  __MSG_ACK &&
-                recv_msg_hdr.seq_num > latest_ack) {
+                recv_msg_hdr.seq_num >= latest_ack) {
                 
                 latest_ack = recv_msg_hdr.seq_num;
-	    }
+                //printf("\nDebug Ack Received");
+            }
             count--;
         }
-        
         // stop the timer here
 
 process_acks:
         // process the acks 
         // start from tail and delete packets upto seqnum = latest_ack - 1
+        
         while(1) {        
             if (snd_wndw->free_sz < SEND_WINDOW_SIZE) {
-                if(snd_wndw->buff[snd_wndw->win_tail]->seq_num >= latest_ack)
+                snum = snd_wndw->buff[snd_wndw->win_tail]->seq_num;
+                
+                printf("\n Rcvd ACK Seq Num : %d", snum);
+                if(snum > latest_ack)
                     break;
+
+                //printf("\n Rcvd ACK Seq Num : %d", snum);
                 s_rem_window(snd_wndw);
                 continue;
             }
@@ -208,8 +251,9 @@ process_acks:
             expected_ack = latest_ack;
             goto send;
         }
-        
     }
+
+    free(snd_wndw);
 }
 
 

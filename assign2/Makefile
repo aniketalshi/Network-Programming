@@ -1,6 +1,6 @@
 CC = gcc
 
-LIBS =  -lresolv -lnsl\
+LIBS =  -lresolv -lnsl -lpthread\
 	./Stevens/libunp.a
 
 FLAGS =  -g -O1
@@ -21,8 +21,8 @@ server: server.o structs.o get_ifi_info_plus.o controls.o
 server.o: server.c
 	${CC} ${CFLAGS} -c server.c
 
-client: client.o client.o get_ifi_info_plus.o 
-	${CC} ${FLAGS} -o client client.o structs.o get_ifi_info_plus.o ${LIBS}
+client: client.o client.o get_ifi_info_plus.o controls.o
+	${CC} ${FLAGS} -o client client.o structs.o controls.o get_ifi_info_plus.o ${LIBS}
 client.o: client.c
 	${CC} ${CFLAGS} -c client.c
 

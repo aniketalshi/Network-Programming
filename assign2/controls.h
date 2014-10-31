@@ -7,6 +7,11 @@
 #define MAX_ACK_CNT             3
 
 enum TYPE {SEND_BUF, RECV_BUF};
+extern int      seed_val;
+extern float    prob_loss;
+
+/* paratmeters received from server.in */
+extern int      max_sending_win_size;
 
 typedef struct window_pckt {
     unsigned long  time_st;     // Time Stamp
@@ -39,6 +44,7 @@ typedef struct recv_window {
     long int exp_seq; 
 }recv_wndw_t;
 
+struct recv_window *r_win;
 
 snd_wndw_t  *s_window_init  ();  /* window init */
 recv_wndw_t *r_window_init  ();
@@ -55,7 +61,7 @@ int  s_rem_window   (struct sender_window *snd_wndw);  /* remove pckt from send 
 int  r_rem_window   (struct recv_window *recv_wndw);   /* remove pckt from recv window */
 
 /* Main sending logic */
-void sending_func (int sockfd, void *read_buf, int bytes_rem);
+void sending_func (int sockfd, void *read_buf, int bytes_rem, int sending_win_size);
 
 
 /* To get next seq num */

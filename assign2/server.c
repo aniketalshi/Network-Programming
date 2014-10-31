@@ -24,7 +24,7 @@ void timer_signal_handler(int signo){
 /* Send file requested by client 
  * Invoked after tcp handshake */
 void 
-send_file (conn_struct_t *conn, char *filename) {
+send_file (conn_struct_t *conn, char *filename, int client_win_size) {
     
     int file_d, n_bytes = 0;
     char send_buf[CHUNK_SIZE];
@@ -45,7 +45,7 @@ send_file (conn_struct_t *conn, char *filename) {
     /* read chunks of file */
     while((n_bytes = read (file_d, send_buf, CHUNK_SIZE * 10)) > 0) {
         
-        sending_func(conn->conn_sockfd, (void *)send_buf, n_bytes);
+        sending_func(conn->conn_sockfd, (void *)send_buf, n_bytes, client_win_size);
 	memset(send_buf, 0, CHUNK_SIZE);
     }
 
@@ -70,7 +70,8 @@ service_client_req(sock_struct_t *curr,
     int buffer_cap, on = 1;
     char msg[MAXLINE];
     socklen_t len;
-   
+    msg_hdr_t *msg_hdr;
+
     signal(SIGALRM, timer_signal_handler);
     memset(&rtt_s, 0, sizeof(struct rtt_info));
     rtt_init( &rtt_s );
@@ -135,7 +136,7 @@ service_client_req(sock_struct_t *curr,
     rtt_newpack( &rtt_s );
 
     /* Start the timer. */
-    rtt_start_timer( rtt_start( &rtt_s ) );
+    rtt_start_timer( 3000 );
     
     /* Handle the timer signal, and retransmit. */
     if (sigsetjmp(jmp, 1) != 0) {
@@ -143,7 +144,7 @@ service_client_req(sock_struct_t *curr,
         /* Check if maximum retransmits have already been sent. */
         if (rtt_timeout( &rtt_s ) == 0) {
             printf("\n\n No communication from client; Sending packet again.\n");
-            rtt_start_timer( rtt_start( &rtt_s ) );
+            rtt_start_timer( 3000 );
             
             /* Send the packet again. */
             sendto(curr->sockfd, (void *)msg, 
@@ -159,11 +160,14 @@ service_client_req(sock_struct_t *curr,
             return;
         }
     }
-    
+   
+    msg_hdr = get_hdr(__MSG_ACK, 0, 0);
     /* Receive final ack on new UDP port */
-    n = recvfrom(connect_fd, msg, MAXLINE, 0, 
+    n = recvfrom(connect_fd, (msg_hdr_t *) msg_hdr, sizeof(msg_hdr_t) , 0, 
     		    (struct sockaddr *)cli_addr, &len);
     
+     
+    int client_win_size = msg_hdr->win_size;
     /* Turn off the alarm */
     rtt_start_timer(0);
     
@@ -176,7 +180,7 @@ service_client_req(sock_struct_t *curr,
     conn = insert_conn_struct (connect_fd, &srv_addr , cli_addr, &conn_head);
     
     /* start sending file */
-    send_file (conn, bufname);
+    send_file (conn, bufname, client_win_size);
 }
 
 void
@@ -247,9 +251,9 @@ main(int argc, char* argv[]) {
     struct sockaddr_in *sa;
     const int on = 1;
     int is_loopback = 0, sockfd;
-    int server_port = 0, max_win_size = 0;                                                                                                                                     
+    int server_port = 0;                                                                                                                                     
     /* read input from server.in input file */
-    server_input(&server_port, &max_win_size);
+    server_input(&server_port, &max_sending_win_size);
 
     /* Iterate over all interfaces and store values in struct */
     for (ifihead = ifi = Get_ifi_info_plus(AF_INET, 1);

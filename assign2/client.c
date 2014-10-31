@@ -68,10 +68,10 @@ get_client_ip (struct sock_struct *sock_struct_head,
 }
 
 void 
-cli_func (int sockfd, SA *srv_addr, socklen_t len, char* file_name) { 
+cli_func (int sockfd, SA *srv_addr, socklen_t len, char* file_name, int window_size) { 
     char buf[MAXLINE]; 
     char sendline[MAXLINE];
-
+    msg_hdr_t *msg_hdr;
     Connect(sockfd, (SA *)srv_addr, len);
     //TODO: Print out server info calling getpeername
     
@@ -85,16 +85,20 @@ cli_func (int sockfd, SA *srv_addr, socklen_t len, char* file_name) {
     printf("\nSecond hand-shake. Port number received: %d\n", ntohs(atoi(buf)));
 
     ((struct sockaddr_in *)srv_addr)->sin_port = htons(atoi(buf));
-    
+   
+    msg_hdr = get_hdr(__MSG_ACK, 0, window_size);
+
     /* connect to this new port */
     Connect(sockfd, (SA *)srv_addr, len);
-    sprintf(sendline, "ACK");
-    
+    //sprintf(sendline, (void *)window_size);
+    memset(sendline, 0, sizeof(sendline));
+    sprintf(sendline, "%d", window_size);
     /* Third Hand shake */
-    Write(sockfd, sendline, strlen(sendline));
-    
+    Write(sockfd, (void *) msg_hdr, sizeof(msg_hdr_t));
     /* Start reading data from client */
+    r_win = r_window_init(); 
     //TODO: spwan two threads consumer and producer
+    
     pthread_create(&prod_thread, NULL, receiving_func, (void *)&sockfd);
     pthread_create(&cons_thread, NULL, consumer_func, NULL);
     
@@ -113,9 +117,7 @@ main(int argc, char* argv[]) {
     char buf[MAXLINE];
     socklen_t len;
     char server_ip[MAXLINE], file_name[MAXLINE];
-    int server_port, window_size, seed_val, read_rate, buffer_cap, on = 1;
-    float prob_loss;
-    
+    int server_port, window_size, read_rate, buffer_cap, on = 1;
     
     /* read input from client.in file */
     client_input(&server_ip, &server_port, &file_name, 
@@ -190,7 +192,7 @@ main(int argc, char* argv[]) {
     inet_pton (AF_INET, server_ip, &srv_addr.sin_addr);
 
     // First Hand-shake
-    cli_func (connect_fd, (SA *)&srv_addr, sizeof(srv_addr), file_name); 
+    cli_func (connect_fd, (SA *)&srv_addr, sizeof(srv_addr), file_name, window_size); 
 
     return 0;
 }

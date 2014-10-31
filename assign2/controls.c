@@ -16,6 +16,7 @@ int     seed_val;
 
 int     max_sending_win_size;
 
+pthread_mutex_t fastmutex = PTHREAD_MUTEX_INITIALIZER;
 volatile    should_terminate = 0;
 static      sigjmp_buf jmp;
 void sigalarm_handler(int signo){
@@ -66,7 +67,8 @@ recv_wndw_t *
 r_window_init () {
     
     recv_wndw_t *recv_wndw = (recv_wndw_t *)calloc(1, sizeof(recv_wndw_t));
-
+    
+    pthread_mutex_init(&fastmutex, NULL);
     //memset (recv_wndw->buff, 0, RECV_WINDOW_SIZE);
     recv_wndw->win_head  = -1;
     recv_wndw->win_tail  = 0;
@@ -119,7 +121,11 @@ int
 r_add_window (int sockfd, struct recv_window *recv_wndw,    
                    struct window_pckt *pckt) {
     int diff = 0; 
+
     
+    if(pthread_mutex_lock(&fastmutex) != 0)
+        printf("Error in pthread_mutex_lock\n");
+
     printf ("Inserting packet with seq: %d", 
                     pckt->seq_num);
     //printf ("head - %d, tail - %d", recv_wndw->win_head,
@@ -137,6 +143,8 @@ r_add_window (int sockfd, struct recv_window *recv_wndw,
         
         recv_wndw->free_slt--;
         send_ack_func(sockfd, recv_wndw, pckt->time_st);
+        if(pthread_mutex_unlock(&fastmutex) != 0)
+            printf ("Error while unlocking pthread_mutex\n");
         return 1;
     }
 
@@ -151,6 +159,8 @@ r_add_window (int sockfd, struct recv_window *recv_wndw,
         
         if (diff > recv_wndw->free_slt) {
             fprintf(stderr,"\n Sorry no place in buffer ");
+            if(pthread_mutex_unlock(&fastmutex) != 0)
+                printf ("Error while unlocking pthread_mutex\n");
             return 0;
         }
         
@@ -162,6 +172,8 @@ r_add_window (int sockfd, struct recv_window *recv_wndw,
         recv_wndw->buff[recv_wndw->win_head].entry = pckt;
         
         send_ack_func(sockfd, recv_wndw, pckt->time_st);
+        if(pthread_mutex_unlock(&fastmutex) != 0)
+            printf ("Error while unlocking pthread_mutex\n");
         return 1;
     } else {
        
@@ -169,6 +181,8 @@ r_add_window (int sockfd, struct recv_window *recv_wndw,
             recv_wndw->buff[recv_wndw->win_tail].is_valid = 1;
             recv_wndw->buff[recv_wndw->win_tail].entry = pckt;
             send_ack_func(sockfd, recv_wndw, pckt->time_st);
+            if(pthread_mutex_unlock(&fastmutex) != 0)
+                printf ("Error while unlocking pthread_mutex\n");
             return 1;
         }
         // if diff is negative
@@ -178,6 +192,8 @@ r_add_window (int sockfd, struct recv_window *recv_wndw,
         
         if (pckt->seq_num < recv_wndw->exp_seq) {
             fprintf(stderr,"\n Duplicated Packet. Already Acked");
+            if(pthread_mutex_unlock(&fastmutex) != 0)
+                printf ("Error while unlocking pthread_mutex\n");
             return 0;
         }
         
@@ -186,9 +202,10 @@ r_add_window (int sockfd, struct recv_window *recv_wndw,
             recv_wndw->buff[diff].entry = pckt;
         }
         send_ack_func(sockfd, recv_wndw, pckt->time_st);
+        if(pthread_mutex_unlock(&fastmutex) != 0)
+            printf ("Error while unlocking pthread_mutex\n");
         return 1;
     }
-
 }
 
 
@@ -229,9 +246,13 @@ void* consumer_func () {
     memset(buf, 0, sizeof(buf));
     int len = 0;
 
+        
     /* iterate from tail to last ack and remove them from buff */
     while(should_terminate == 0 || r_win->buff[r_win->win_tail].is_valid == 1) {
-       
+        
+        if(pthread_mutex_lock(&fastmutex) != 0)
+            printf("Error in pthread_mutex_lock\n");
+        
         while ( r_win->buff[r_win->win_tail].is_valid == 1 &&
            
             r_win->buff[r_win->win_tail].entry->seq_num < r_win->exp_seq) {
@@ -248,6 +269,9 @@ void* consumer_func () {
             // remove entry from tail
             r_rem_window(r_win);
         }
+
+        if(pthread_mutex_unlock(&fastmutex) != 0)
+            printf ("Error while unlocking pthread_mutex\n");
     }
     pthread_exit(NULL);
 }
@@ -507,7 +531,8 @@ receiving_func (void* data) {
             r_win_pckt->time_st  = recv_msg_hdr->timestamp;
             r_win_pckt->data_len = CHUNK_SIZE;
             r_win_pckt->body     = body;
-            r_add_window (sockfd, r_win, r_win_pckt);
+
+            r_add_window (sockfd, r_win, r_win_pckt);    
         }
     }
     

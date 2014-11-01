@@ -49,6 +49,21 @@ typedef struct msg_hdr {
     uint32_t win_size;	    // Windown size
 }msg_hdr_t;
 
+
+/* structure to store all client params fron client.in file */
+typedef struct client_params {
+   uint32_t    server_port;            // server port no
+   uint32_t    window_size;            // window size of client
+   long int    seed_val;               // seed value for sleeping consumer thread
+   double      prob_loss;              // porbability with which to drop packet
+   uint32_t    read_rate;              
+   char        server_ip[IPLEN];       // server ip address
+   char        file_name[MAXLINE];      // name of file to be transferred
+}client_params_t;
+
+/* global client params struct */
+client_params_t cli_params;
+
 /* allocate new sock struct */
 sock_struct_t * get_sock_struct (int sockfd, 
 		 struct sockaddr_in *ip_addr,
@@ -79,7 +94,6 @@ msg_hdr_t *get_ack_hdr (uint32_t seq_num, unsigned long ts, uint32_t ws);
 void  send_data (int sockfd, void *buf, int len, int ftype);
 
 /* Logic to read data */
-//void  read_data (int sockfd);
 int
 read_data (int sockfd, int *seqnum, msg_hdr_t *recv_msg_hdr, void *body, int *len);
 

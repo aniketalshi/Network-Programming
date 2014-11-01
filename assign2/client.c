@@ -118,8 +118,7 @@ main(int argc, char* argv[]) {
     
     
     /* read input from client.in file */
-    client_input(&server_ip, &server_port, &file_name, 
-		&window_size, &seed_val, &prob_loss, &read_rate);
+    client_input();
 
     for (ifihead = ifi = Get_ifi_info_plus(AF_INET, 1);
             ifi != NULL; ifi = ifi->ifi_next) {
@@ -149,7 +148,7 @@ main(int argc, char* argv[]) {
     print_sock_struct (sock_struct_head);
     free_ifi_info_plus(ifihead);
     
-    get_client_ip(sock_struct_head, &temp_addr, server_ip, &is_local); 
+    get_client_ip(sock_struct_head, &temp_addr, cli_params.server_ip, &is_local); 
     
     printf ("\nIp choosen by client : %s\n", inet_ntoa(temp_addr.sin_addr)); 
     
@@ -186,11 +185,11 @@ main(int argc, char* argv[]) {
     
     memset(&srv_addr, 0, sizeof(srv_addr));
     srv_addr.sin_family  = AF_INET;
-    srv_addr.sin_port    = htons(server_port);
-    inet_pton (AF_INET, server_ip, &srv_addr.sin_addr);
+    srv_addr.sin_port    = htons(cli_params.server_port);
+    inet_pton (AF_INET, cli_params.server_ip, &srv_addr.sin_addr);
 
     // First Hand-shake
-    cli_func (connect_fd, (SA *)&srv_addr, sizeof(srv_addr), file_name); 
+    cli_func (connect_fd, (SA *)&srv_addr, sizeof(srv_addr), cli_params.file_name); 
 
     return 0;
 }

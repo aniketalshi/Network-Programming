@@ -6,6 +6,7 @@
 #define CLI_FILE    "client.in"
 
 struct rtt_info rtts;
+
 /* utility function */
 
 /* To print ip and port */
@@ -43,9 +44,8 @@ server_input(int *server_port, int *max_win_size){
 }
 
 /* To get input from client.in */
-void
-client_input(char* server_ip, int* server_port, char* file_name, int* window_size, 
-             int* seed_val, float* prob_loss, int* read_rate){
+void 
+client_input () {
     char temp[MAXLINE];
 
     FILE *fp = NULL;
@@ -54,33 +54,33 @@ client_input(char* server_ip, int* server_port, char* file_name, int* window_siz
 	exit(1);
     }
     
-    fscanf(fp, "%s", server_ip);
+    fscanf(fp, "%s", cli_params.server_ip);
 
     fscanf(fp, "%s", temp);
-    *server_port = atoi(temp);
+    cli_params.server_port = atoi(temp);
 		    
-    fscanf(fp, "%s", file_name);
+    fscanf(fp, "%s", cli_params.file_name);
 
     fscanf(fp, "%s", temp);
-    *window_size = atoi(temp);
+    cli_params.window_size = atoi(temp);
 				        
     fscanf(fp, "%s", temp);
-    *seed_val = atoi(temp);
+    cli_params.seed_val = atoi(temp);
 						    
     fscanf(fp, "%s", temp);
-    *prob_loss = atof(temp);
+    cli_params.prob_loss = atof(temp);
 
     fscanf(fp, "%s", temp);
-    *read_rate = atoi(temp);
+    cli_params.read_rate = atoi(temp);
 
     printf("=============== Read from client.in ===============\n");
-    printf("Server IP Address   : %s\n", server_ip);
-    printf("Server Port Number  : %d\n", *server_port);
-    printf("File name           : %s\n", file_name);
-    printf("Window size         : %d\n", *window_size);
-    printf("Seed Value          : %d\n", *seed_val);
-    printf("Probability of loss : %f\n", *prob_loss); 
-    printf("Read Rate           : %d\n", *read_rate);
+    printf("Server IP Address   : %s\n", cli_params.server_ip);
+    printf("Server Port Number  : %d\n", cli_params.server_port);
+    printf("File name           : %s\n", cli_params.file_name);
+    printf("Window size         : %d\n", cli_params.window_size);
+    printf("Seed Value          : %d\n", cli_params.seed_val);
+    printf("Probability of loss : %f\n", cli_params.prob_loss); 
+    printf("Read Rate           : %d\n", cli_params.read_rate);
     printf("===================================================\n");
 }
 

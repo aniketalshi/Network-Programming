@@ -27,9 +27,9 @@ void
 send_file (conn_struct_t *conn, char *filename) {
     
     int file_d, n_bytes = 0;
-    char send_buf[CHUNK_SIZE];
+    char send_buf[CHUNK_SIZE * 10];
     
-    memset(send_buf, 0, CHUNK_SIZE);
+    memset(send_buf, 0, CHUNK_SIZE * 10);
     printf("\n File Requested by client: %s\n", filename);
     
     /* open file for reading */

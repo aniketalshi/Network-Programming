@@ -301,7 +301,7 @@ send_probe (int sockfd, int *client_win_size) {
 
     while (1) {
         // probe client and check
-        printf ("sending probe\n");
+        printf ("\nsending probe\n");
         send_probe_packet (sockfd);
         
         memset (&pcktmsg, 0, sizeof(struct msghdr));
@@ -315,15 +315,11 @@ send_probe (int sockfd, int *client_win_size) {
         recvvec[0].iov_len   = sizeof(msg_hdr_t);
         recvvec[0].iov_base  = (void *)&recv_msg_hdr;
 
-        if((n_bytes = recvmsg(sockfd, &pcktmsg, 0)) < 0) {
+        while((n_bytes = recvmsg(sockfd, &pcktmsg, 0)) < 0) {
             if (errno == EAGAIN || errno == EWOULDBLOCK)
-                continue;
+                break;    
         }
         
-        if (n_bytes <= 0) {
-            printf ("Connection Terminated\n");
-            return 0; 
-        }
         
         if (recv_msg_hdr.msg_type ==  __MSG_PROBE_RESP && 
                                     recv_msg_hdr.win_size > 0) {
@@ -418,7 +414,7 @@ send:
             /* Send the probe packet to check if client window size has increased
              * Break if client has terminated while sending probes
              */
-            if (send_probe(sockfd, &client_win_size)) {
+            if (!send_probe(sockfd, &client_win_size)) {
                 cli_term = 1;
                 break;
             }

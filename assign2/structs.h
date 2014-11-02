@@ -17,6 +17,8 @@
 #define __MSG_FILE_DATA		2  // Packets containing file data
 #define __MSG_INFO		3  // Info regarding port nos etc
 #define __MSG_FIN		4  // Final packet
+#define __MSG_PROBE             5  // Probe packet
+#define __MSG_PROBE_RESP        6  // Probe response
 
 /* sock_struct : stores all information related to a socket
  * socket number, ip_addr, netmask
@@ -94,7 +96,8 @@ msg_hdr_t *get_ack_hdr (uint32_t seq_num, unsigned long ts, uint32_t ws);
 void  send_data (int sockfd, void *buf, int len, int ftype);
 
 /* Logic to read data */
-int
-read_data (int sockfd, int *seqnum, msg_hdr_t *recv_msg_hdr, void *body, int *len);
+int read_data (int sockfd, int *seqnum, msg_hdr_t *recv_msg_hdr, void *body, int *len);
 
+/* send probe packet */
+int send_probe_packet (int sockfd);
 #endif /* __structs_h */

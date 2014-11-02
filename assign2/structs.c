@@ -262,10 +262,35 @@ send_packet (int sockfd, msg_hdr_t *header,
 	fprintf(stderr, "Error sending packet");	
 	return nbytes;
     }
-    
     return nbytes;
 }
 
+/* send probe packet */
+int 
+send_probe_packet (int sockfd) {
+
+    struct msghdr pcktmsg;
+    struct iovec sendvec[1];
+    int nbytes;
+
+    memset(&pcktmsg, 0, sizeof(struct msghdr));
+    pcktmsg.msg_name     = NULL;
+    pcktmsg.msg_namelen  = 0;
+    pcktmsg.msg_iov      = sendvec;
+    pcktmsg.msg_iovlen   = 1;
+    
+    sendvec[0].iov_len   = sizeof(msg_hdr_t);
+    sendvec[0].iov_base  = (void *)get_hdr (__MSG_PROBE, 0, 0);
+    
+    // send the packet
+    if ((nbytes = sendmsg(sockfd, &pcktmsg, 0)) < 0) {
+	fprintf(stderr, "Error sending packet");	
+	return nbytes;
+    }
+    
+    return nbytes;
+
+}
 /* Data sending logic will go here */
 void
 send_data (int sockfd, void *buf, int len, int ftype) {
@@ -286,7 +311,6 @@ read_data (int sockfd, int *seqnum, msg_hdr_t *recv_msg_hdr, void *body, int *le
     struct msghdr pcktmsg;
     //wndw_pckt_t *r_win_pckt;
     struct iovec recvvec[2];
-    int cnt = 1;
         
     memset (&pcktmsg, 0, sizeof(struct msghdr));
     
@@ -309,7 +333,6 @@ read_data (int sockfd, int *seqnum, msg_hdr_t *recv_msg_hdr, void *body, int *le
     
     *seqnum = recv_msg_hdr->seq_num;
     *len    = CHUNK_SIZE;
-    
     return 1;
 }
 
@@ -336,6 +359,6 @@ send_ack (int sockfd, msg_hdr_t *header) {
 	return nbytes;
     }
     
-    printf("\n Ack Sent %d\n", header->seq_num);
+    printf("\n Ack Sent %d, win size %d\n", header->seq_num, header->win_size);
     return nbytes;
 }

@@ -3,6 +3,7 @@
 #include "unprtt.h"
 #include <setjmp.h>
 #include <assert.h>
+#include <math.h>
 
 #define PRINT_S(a)  print_s((snd_wndw_t *)a)
 #define PRINT_R(a)  print_r((recv_wndw_t *)a)
@@ -241,6 +242,12 @@ r_rem_window (struct recv_window *recv_wndw) {
     return 0;
 }
 
+int 
+get_sleep_secs () {
+int sleep = -1 * (cli_params.read_rate * (log (drand48()) / log (2)));
+printf ("Consumer sleeping for %d secs.\n", sleep);
+return sleep;
+}
 
 void* consumer_func () {
     char buf[CHUNK_SIZE+1];
@@ -255,7 +262,7 @@ void* consumer_func () {
     
     /* iterate from tail to last ack and remove them from buff */
     while (should_terminate == 0) {
-        sleep(5);
+        sleep (get_sleep_secs ());
         while ( r_win->buff[r_win->win_tail].is_valid == 1 &&
                 r_win->buff[r_win->win_tail].entry->seq_num < r_win->exp_seq) {
             

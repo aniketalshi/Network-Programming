@@ -362,3 +362,114 @@ send_ack (int sockfd, msg_hdr_t *header) {
     printf("\n Ack Sent %d, win size %d\n", header->seq_num, header->win_size);
     return nbytes;
 }
+
+/* FIN sending funciton - send fin packet, timeout after 3 secs
+ * if ack received, close down the connection. Else retransmit FIN 
+ * upto max 3 times then shutdown. 
+ */
+void
+send_fin (int sockfd, void *send_buf) {
+    int count = 0, on = 1;
+    msg_hdr_t recv_msg_hdr;
+    struct msghdr pcktmsg;
+    struct iovec recvvec[1];
+    int n_bytes, flags;
+
+    struct timeval timeout;
+    timeout.tv_sec = 3;
+    timeout.tv_usec = 0;
+    
+    memset(send_buf, 0, CHUNK_SIZE);
+    if (setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, 
+                                (char *)&timeout, sizeof(timeout)) < 0) {
+        perror("Socket option failed\n");
+    }
+    
+    while (count < 3) {
+        // send the data
+        printf ("Sending fin packet\n");
+        send_data(sockfd, (void *)send_buf, 0, __MSG_FIN);
+
+        memset (&pcktmsg, 0, sizeof(struct msghdr));
+        memset (&recv_msg_hdr, 0, sizeof(msg_hdr_t));
+        
+        pcktmsg.msg_name     = NULL;
+        pcktmsg.msg_namelen  = 0;
+        pcktmsg.msg_iov      = recvvec;
+        pcktmsg.msg_iovlen   = 1;
+
+        recvvec[0].iov_len   = sizeof(msg_hdr_t);
+        recvvec[0].iov_base  = (void *)&recv_msg_hdr;
+        
+        // wait to receive the acknowledgement
+        while((n_bytes = recvmsg(sockfd, &pcktmsg, 0)) < 0) {
+            if (errno == EAGAIN || errno == EWOULDBLOCK)
+                break;    
+        }
+
+        if (n_bytes > 0 && recv_msg_hdr.msg_type ==  __MSG_FIN_ACK) {
+            printf("\n Shutting Down the connection on Server ");
+            break;
+        }
+        count++;
+    }
+    return;
+}
+
+
+/* function to send fin-ack. After receiving FIN, client sends ack
+ * wait for 3 secs in close_wait state. If it receives FIN within 3 secs
+ * it means ack got lost, it resends an ack. Repeats this for max of 3 times.
+ * After that it quits 
+ */
+void 
+send_fin_ack (int sockfd) {
+
+    int count  = 0;
+    int n_bytes;
+    struct msghdr pcktmsg;
+    //wndw_pckt_t *r_win_pckt;
+    struct iovec recvvec[2];
+    struct timeval timeout;
+    timeout.tv_sec = 3;
+    timeout.tv_usec = 0;
+    
+    msg_hdr_t *recv_msg_hdr = (msg_hdr_t *)malloc(sizeof(msg_hdr_t));
+    char *body = (char *)calloc(1, CHUNK_SIZE + 1);
+    
+    if (setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, 
+                                (char *)&timeout, sizeof(timeout)) < 0) {
+        perror("Socket option failed\n");
+    }
+
+    while (count < 3) {
+        // send fin-ack
+        printf ("\n Sending fin-ack\n");
+        send_ack(sockfd, get_hdr(__MSG_FIN_ACK, 0, 0));
+        count++;
+        
+        memset (&pcktmsg, 0, sizeof(struct msghdr));
+        
+        pcktmsg.msg_name     = NULL;
+        pcktmsg.msg_namelen  = 0;
+        pcktmsg.msg_iov      = recvvec;
+        pcktmsg.msg_iovlen   = 2;
+
+        recvvec[0].iov_len   = sizeof(msg_hdr_t);
+        recvvec[0].iov_base  = (msg_hdr_t *)recv_msg_hdr;
+        recvvec[1].iov_len   = CHUNK_SIZE;
+        recvvec[1].iov_base  = (void *)body;
+
+        if (((n_bytes = recvmsg(sockfd, &pcktmsg, 0)) < 0) && 
+             (errno == EAGAIN || errno == EWOULDBLOCK))
+            break;    
+        
+        if (n_bytes > 0 && recv_msg_hdr->msg_type ==  __MSG_FIN) {
+            continue;
+        }
+    }
+    printf ("\n\n****** File transfer completed *****\n");
+    return;
+}
+
+

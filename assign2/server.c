@@ -50,11 +50,8 @@ send_file (conn_struct_t *conn, char *filename, int client_win_size) {
         sending_func(conn->conn_sockfd, (void *)send_buf, n_bytes, client_win_size);
 	memset(send_buf, 0, CHUNK_SIZE * 10);
     }
-
-    /* Send final FIN */
-    memset(send_buf, 0, CHUNK_SIZE);
-    send_data(conn->conn_sockfd, (void *)send_buf, 0, __MSG_FIN);
-    
+    /* send the fin packet */ 
+    send_fin (conn->conn_sockfd, (void *)send_buf);
     printf("\n==========File Transfer complete =============\n");
 
     close(file_d);

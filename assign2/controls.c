@@ -179,8 +179,8 @@ r_add_window (int sockfd, struct recv_window *recv_wndw,
         diff = (recv_wndw->win_head + diff + RECV_WINDOW_SIZE) % RECV_WINDOW_SIZE;
         
         if (pckt->seq_num < recv_wndw->exp_seq) {
-            fprintf(stderr,"Duplicated Packet with Seq num %d. Already Acked\n", pckt->seq_num);
-            flag = 1;
+            fprintf(stderr,"Duplicate Packet with Seq num %d\n", pckt->seq_num);
+            send_ack_func(sockfd, recv_wndw, pckt->time_st);
             goto end;
         }
    
@@ -588,8 +588,10 @@ receiving_func (void* data) {
         
         /* IF type of message is FIN, we are done */
 	if (recv_msg_hdr->msg_type ==  __MSG_FIN) {
-	    printf ("\n\n****** File transfer completed *****\n");
-                
+            
+            send_fin_ack(sockfd);
+            printf("\n Client Terminating"); 
+            
             // TODO: handle this more gracefully.
             should_terminate = 1;
 	    break;

@@ -19,6 +19,7 @@
 #define __MSG_FIN		4  // Final packet
 #define __MSG_PROBE             5  // Probe packet
 #define __MSG_PROBE_RESP        6  // Probe response
+#define __MSG_FIN_ACK           7  // fin ack
 
 /* sock_struct : stores all information related to a socket
  * socket number, ip_addr, netmask

@@ -154,18 +154,17 @@ print_sock_struct (sock_struct_t *st) {
 
 /* To get new connection struct */
 conn_struct_t *
-get_conn_struct (int conn_sockfd,
-		 struct sockaddr_in *srv,
-		 struct sockaddr_in *cli) {
+get_conn_struct (struct sockaddr_in *cli) {
     
-    if (!srv || !cli)
+    if (!cli)
 	return NULL;
     
     conn_struct_t *connr = (conn_struct_t *)
 				 malloc (sizeof(struct conn_struct));
-    connr->serv         = srv;
+    connr->serv         = NULL;
+    connr->pid          = 0;
     connr->cli          = cli;
-    connr->conn_sockfd  = conn_sockfd;
+    connr->conn_sockfd  = 0;
     connr->nxt_struct	= NULL;
 
     return connr;
@@ -190,24 +189,57 @@ check_new_conn (struct sockaddr_in *cli,
     return 0;
 }
 
+/* search and insert values in appropiate conn struct */
+int
+insert_values_conn_struct (struct sockaddr_in *cli, 
+                           struct sockaddr_in *srv, int connfd,
+                           conn_struct_t *curr) {
+
+    curr->serv        = srv;
+    curr->conn_sockfd = connfd;
+    return 1;
+}
+
+/* delete entry from conn_struct */
+void
+delete_conn_struct (conn_struct_t **conn_head, int pid) {
+    
+    printf("\n deleting %d\n", pid);
+    conn_struct_t *curr, *pre = NULL;
+    for (curr = *conn_head; curr != NULL; curr = curr->nxt_struct) {
+        if (curr->pid == pid) {
+            if(curr == *conn_head) {
+                *conn_head = (*conn_head)->nxt_struct;
+                free(curr);
+                return;
+            }
+            
+            if(pre) 
+                pre->nxt_struct = curr->nxt_struct;
+            
+            free(curr);
+            return;
+        }
+        pre = curr;
+    }
+}
+
 /* To insert in conn struct */
 conn_struct_t *
-insert_conn_struct (int conn_sockfd,
-		    struct sockaddr_in *srv,
-		    struct sockaddr_in *cli,
+insert_conn_struct (struct sockaddr_in *cli,
 		    conn_struct_t **conn_head) {
     
     conn_struct_t *curr = *conn_head;
     
     if (!curr) {
-	*conn_head = get_conn_struct(conn_sockfd, srv, cli);
+	*conn_head = get_conn_struct(cli);
 	return *conn_head;
     }
 
     // Go to the end of list 
     for (curr = *conn_head; curr->nxt_struct; curr = curr->nxt_struct);
 
-    curr->nxt_struct = get_conn_struct (conn_sockfd, srv, cli);
+    curr->nxt_struct = get_conn_struct (cli);
     return curr->nxt_struct;
 }
 
@@ -426,7 +458,7 @@ void
 send_fin_ack (int sockfd) {
 
     int count  = 0;
-    int n_bytes;
+    int n_bytes, flags;
     struct msghdr pcktmsg;
     //wndw_pckt_t *r_win_pckt;
     struct iovec recvvec[2];
@@ -437,9 +469,15 @@ send_fin_ack (int sockfd) {
     msg_hdr_t *recv_msg_hdr = (msg_hdr_t *)malloc(sizeof(msg_hdr_t));
     char *body = (char *)calloc(1, CHUNK_SIZE + 1);
     
-    if (setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, 
-                                (char *)&timeout, sizeof(timeout)) < 0) {
-        perror("Socket option failed\n");
+    // make sockfd non blocking
+    if ((flags = fcntl(sockfd, F_GETFL, 0)) == -1) {
+        perror("fcntl F_GETFL Error");
+        exit(EXIT_FAILURE);
+    }
+   
+    if((fcntl(sockfd, F_SETFL, flags | O_NONBLOCK)) == -1) {
+        perror("fcntl F_SETFL Error");
+        exit(EXIT_FAILURE);
     }
 
     while (count < 3) {
@@ -459,14 +497,25 @@ send_fin_ack (int sockfd) {
         recvvec[0].iov_base  = (msg_hdr_t *)recv_msg_hdr;
         recvvec[1].iov_len   = CHUNK_SIZE;
         recvvec[1].iov_base  = (void *)body;
-
+        
+        // sleep for 3 secs
+        sleep(3);
+        
+        // if no msg is received, we can exit
         if (((n_bytes = recvmsg(sockfd, &pcktmsg, 0)) < 0) && 
              (errno == EAGAIN || errno == EWOULDBLOCK))
             break;    
         
+        // if msg is received and if its a fin then our ack is lost
         if (n_bytes > 0 && recv_msg_hdr->msg_type ==  __MSG_FIN) {
             continue;
         }
+    }
+    
+    flags &= ~O_NONBLOCK;
+    if (fcntl(sockfd, F_SETFL, flags) == -1 ) {
+        perror("fcntl F_SETFL Error");
+        exit(EXIT_FAILURE);
     }
     printf ("\n\n****** File transfer completed *****\n");
     return;

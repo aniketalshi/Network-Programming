@@ -21,6 +21,15 @@ void timer_signal_handler(int signo){
     siglongjmp(jmp, 1);
 }
 
+void sigchild_handler(int signo) {
+    printf("\n got in sigchild handler\n");
+    pid_t pid;
+    int   status;
+    while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
+       delete_conn_struct(&conn_head, pid); 
+    }
+}
+
 /* Send file requested by client 
  * Invoked after tcp handshake */
 void 
@@ -60,11 +69,11 @@ send_file (conn_struct_t *conn, char *filename, int client_win_size) {
 /* Handle each client request */
 void 
 service_client_req(sock_struct_t *curr, 
-	    struct sockaddr_in *cli_addr,
-	    char *bufname) {
+	           struct sockaddr_in *cli_addr,
+                   conn_struct_t *conn,
+	           char *bufname) {
    
     struct sockaddr_in srv_addr, udpsock;
-    conn_struct_t *conn;
     int i, n, connect_fd, socklen, is_client_local = 0;
     int buffer_cap, on = 1;
     char msg[MAXLINE];
@@ -132,10 +141,10 @@ service_client_req(sock_struct_t *curr,
     	    sizeof(msg)+1, 0, (struct sockaddr *)cli_addr, sizeof(struct sockaddr));
    
     /* Initialize the retransmit count to 0. */
-    rtt_newpack( &rtt_s );
+    rtt_newpack (&rtt_s);
 
     /* Start the timer. */
-    rtt_start_timer( 3000 );
+    rtt_start_timer (3000);
     
     /* Handle the timer signal, and retransmit. */
     if (sigsetjmp(jmp, 1) != 0) {
@@ -165,7 +174,6 @@ service_client_req(sock_struct_t *curr,
     n = recvfrom(connect_fd, (msg_hdr_t *) msg_hdr, sizeof(msg_hdr_t) , 0, 
     		    (struct sockaddr *)cli_addr, &len);
     
-     
     int client_win_size = msg_hdr->win_size;
     /* Turn off the alarm */
     rtt_start_timer(0);
@@ -176,7 +184,8 @@ service_client_req(sock_struct_t *curr,
     close(curr->sockfd);
 
     /* insert in conn_struct */
-    conn = insert_conn_struct (connect_fd, &srv_addr , cli_addr, &conn_head);
+    //conn = insert_conn_struct (connect_fd, &srv_addr , cli_addr, &conn_head);
+    insert_values_conn_struct(cli_addr, &srv_addr, connect_fd, conn);
     
     /* start sending file */
     send_file (conn, bufname, client_win_size);
@@ -192,6 +201,8 @@ listen_reqs (struct sock_struct *sock_struct_head) {
     pid_t pid;
     char msg[MAXLINE];
     socklen_t len;
+    conn_struct_t *conn;
+    sigset_t signal_set;
     
     fd_set fdset, tempset;
     FD_ZERO(&fdset);
@@ -199,14 +210,20 @@ listen_reqs (struct sock_struct *sock_struct_head) {
     
     len = sizeof(struct sockaddr_in);
     maxfd = -1; 
+
     for(curr = sock_struct_head; curr != NULL; curr = curr->nxt_struct) {
         FD_SET(curr->sockfd, &tempset);
         if (curr->sockfd > maxfd)
             maxfd = curr->sockfd;
     }
-        FD_ZERO(&fdset);
+    FD_ZERO(&fdset);
+    
     while(1) {
 	fdset = tempset;
+        
+        /* block the sigchild signal */
+        sigemptyset(&signal_set);
+        sigaddset(&signal_set, SIGCHLD);
 
 	retval = select (maxfd + 1, &fdset, NULL, NULL, NULL);
 	if (retval < 0) {
@@ -216,7 +233,10 @@ listen_reqs (struct sock_struct *sock_struct_head) {
 	}
 	
         for(curr = sock_struct_head; curr != NULL; curr = curr->nxt_struct) {
-	    if (FD_ISSET(curr->sockfd, &fdset)) {
+            
+            //sigprocmask(SIG_BLOCK, &signal_set, NULL);
+	    
+            if (FD_ISSET(curr->sockfd, &fdset)) {
 		
 		bzero(&cli_addr, sizeof(cli_addr));
 		bzero(msg, MAXLINE);
@@ -231,11 +251,16 @@ listen_reqs (struct sock_struct *sock_struct_head) {
 		if (check_new_conn (&cli_addr, conn_head))
 		    continue;
 
-		if ( (pid = fork()) == 0) { //child proc
-		    service_client_req(curr, &cli_addr, msg);
+                conn = insert_conn_struct (&cli_addr, &conn_head);
+		
+                if ((pid = fork()) == 0) { //child proc
+		    service_client_req(curr, &cli_addr, conn, msg);
 	            exit(0);	
 		} else {
 		    //TODO: store this pid of child in our table
+                    printf("\n %d came in parent\n", pid);
+                    conn->pid = pid;
+                    //sigprocmask(SIG_UNBLOCK, &signal_set, NULL);
 		}
 	    }
 	}
@@ -254,6 +279,7 @@ main(int argc, char* argv[]) {
     /* read input from server.in input file */
     server_input(&server_port, &max_sending_win_size);
 
+    signal(SIGCHLD, sigchild_handler);
     /* Iterate over all interfaces and store values in struct */
     for (ifihead = ifi = Get_ifi_info_plus(AF_INET, 1);
             ifi != NULL; ifi = ifi->ifi_next) {

@@ -631,7 +631,6 @@ receiving_func (void* data) {
             send_ack(sockfd, get_hdr(__MSG_PROBE_RESP, 0, winsize)); 
             
             pthread_mutex_unlock(&r_win->mut);
-
         }
     }
     

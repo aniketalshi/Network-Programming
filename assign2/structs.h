@@ -82,10 +82,9 @@ check_new_conn (struct sockaddr_in *cli,
 		conn_struct_t *conn_head);
 
 /* Insert new conn struct in list */
-conn_struct_t * insert_conn_struct (int conn_sockfd,
-			 struct sockaddr_in *srv, 
-			 struct sockaddr_in *cli, 
-			 conn_struct_t **conn_head);
+conn_struct_t *
+insert_conn_struct (struct sockaddr_in *cli,
+		    conn_struct_t **conn_head);
 
 /* To construct a msg hdr */
 msg_hdr_t *get_hdr (int msg_type, uint32_t seq_num, uint32_t ws);
@@ -101,4 +100,17 @@ int read_data (int sockfd, int *seqnum, msg_hdr_t *recv_msg_hdr, void *body, int
 
 /* send probe packet */
 int send_probe_packet (int sockfd);
+
+/* search and insert values in appropiate conn struct */
+int insert_values_conn_struct (struct sockaddr_in *cli, 
+                               struct sockaddr_in *srv, int connfd,
+                               conn_struct_t *curr);
+
+/* search conn struct and insert pid */
+int insert_pid_conn_struct (conn_struct_t **conn_head, 
+                        struct sockaddr_in *cli, int pid);
+
+/* Delete conn struct */
+void delete_conn_struct (conn_struct_t **conn_head, int pid);
+
 #endif /* __structs_h */

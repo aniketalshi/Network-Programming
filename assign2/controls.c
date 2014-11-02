@@ -39,6 +39,40 @@ print_r (recv_wndw_t *s) {
     }
 }
 
+/* To print the entire sender window. */
+/*
+void
+print_s_win (snd_wndw_t *s) {
+    int iter;
+    for (iter = 0; iter < SEND_WINDOW_SIZE; iter++) {
+        
+        if (s->buff[iter].is_valid) {
+            printf ("| %d ", s->buff[iter].entry->seq_num);
+        }
+        else {
+            printf ("|  X  ");
+        }
+    }
+    printf ("|\n");
+}
+*/
+
+/* To print the entire receiver window. */
+void
+print_r_win (recv_wndw_t *s) {
+    int iter;
+    for (iter = 0; iter < RECV_WINDOW_SIZE; iter++) {
+        
+        if (s->buff[iter].is_valid) {
+            printf ("| %d ", s->buff[iter].entry->seq_num);
+        }
+        else {
+            printf ("|  X  ");
+        }
+    }
+    printf ("|\n");
+}
+
 /* To get next seq num */
 long int 
 get_seq_num() {
@@ -252,7 +286,7 @@ return sleep;
 void* consumer_func () {
     char buf[CHUNK_SIZE+1];
     memset(buf, 0, sizeof(buf));
-    int len = 0;
+    int len = 0, flag = 0;
    
     int out_fd = open (OUTFILE, O_WRONLY | O_CREAT | O_TRUNC);
     
@@ -262,10 +296,14 @@ void* consumer_func () {
     
     /* iterate from tail to last ack and remove them from buff */
     while (should_terminate == 0) {
+        flag = 0;
         sleep (get_sleep_secs ());
+        
         while ( r_win->buff[r_win->win_tail].is_valid == 1 &&
                 r_win->buff[r_win->win_tail].entry->seq_num < r_win->exp_seq) {
-            
+            if (!flag)
+                printf ("Consumer read: ");
+            flag = 1;
             len = r_win->buff[r_win->win_tail].entry->data_len;
             
             // read the entry at tail
@@ -273,12 +311,16 @@ void* consumer_func () {
                 fprintf(stderr, "No content in packet to be read");
                 break;
             }
-            printf ("Consumer read: %d\n",  r_win->buff[r_win->win_tail].entry->seq_num);   
+            printf ("%d\t",  r_win->buff[r_win->win_tail].entry->seq_num);   
             // write to the outfile
             write(out_fd, r_win->buff[r_win->win_tail].entry->body, len);
             
             // remove entry from tail
             r_rem_window(r_win);
+        }
+        if (flag){
+            printf ("\n"); 
+            print_r_win (r_win);
         }
     }
     
@@ -615,6 +657,7 @@ receiving_func (void* data) {
             r_win_pckt->body     = body;
 
             r_add_window (sockfd, r_win, r_win_pckt);    
+            print_r_win (r_win);
         }
 
         // If probe packet is received

@@ -2,6 +2,7 @@
 #include "structs.h"
 #include "unprtt.h"
 #include <setjmp.h>
+#include <assert.h>
 
 #define PRINT_S(a)  print_s((snd_wndw_t *)a)
 #define PRINT_R(a)  print_r((recv_wndw_t *)a)
@@ -10,10 +11,11 @@
                            if((b) == RECV_BUF)  PRINT_R(a);\
                           } while(0)
 
-struct recv_window *r_win;
-volatile should_terminate = 0;
-static sigjmp_buf jmp;
+int            max_sending_win_size;
+volatile int   should_terminate = 0;
+static         sigjmp_buf jmp;
 
+/* signal handler to jump to sending packets again */
 void sigalarm_handler(int signo){
     siglongjmp(jmp, 1);
 }
@@ -43,27 +45,16 @@ get_seq_num() {
     return ++seq_num;
 }
 
-/* Probability function to drop packet */
-int 
-to_drop () {
-    float rand_val = drand48();
-    printf ("\n %f", rand_val);
-
-    if (rand_val < cli_params.prob_loss)
-        return 1;
-
-    return 0;
-}
-
 
 /* sending window init */
 snd_wndw_t *
 s_window_init () {
     snd_wndw_t *snd_wndw = (snd_wndw_t *)malloc(sizeof(snd_wndw_t));
     
-    memset (snd_wndw->buff, 0, (size_t)SEND_WINDOW_SIZE);
+    memset (snd_wndw->buff, 0, (size_t)max_sending_win_size);
     snd_wndw->win_head = 0;
     snd_wndw->win_tail = 0;
+    //TODO: initialise with receiving sending window size?
     snd_wndw->free_sz  = SEND_WINDOW_SIZE;
 
     return snd_wndw;
@@ -74,8 +65,7 @@ recv_wndw_t *
 r_window_init () {
     
     recv_wndw_t *recv_wndw = (recv_wndw_t *)calloc(1, sizeof(recv_wndw_t));
-
-    //memset (recv_wndw->buff, 0, RECV_WINDOW_SIZE);
+    
     recv_wndw->win_head  = -1;
     recv_wndw->win_tail  = 0;
     recv_wndw->last_ack  = 0;
@@ -96,16 +86,17 @@ s_add_window (struct sender_window *snd_wndw, struct window_pckt *pckt) {
        snd_wndw->win_head = (snd_wndw->win_head + 1) % 
                                        SEND_WINDOW_SIZE;
        snd_wndw->free_sz--;
-        
        return 1;
     }
-    
     return 0;
 }
 
 void
 send_ack_func(int sockfd, recv_wndw_t *recv_wndw, unsigned long ts) {
-    
+    int win_size = 0; 
+    /* If packet in middle sequence is received, traverse all contiguous
+     * packets till we have packets, and update expcted seq and last ack
+     */
     while(recv_wndw->buff[recv_wndw->last_ack].is_valid) {
         recv_wndw->exp_seq = 
                   recv_wndw->buff[recv_wndw->last_ack].entry->seq_num + 1;
@@ -114,23 +105,32 @@ send_ack_func(int sockfd, recv_wndw_t *recv_wndw, unsigned long ts) {
                                              RECV_WINDOW_SIZE;
     }
 
-    msg_hdr_t *hdr = get_ack_hdr(recv_wndw->exp_seq, ts, 0); 
-    send_ack(sockfd, hdr);
+    // TEST SENDING 0 AS CLIENT WINDOW SIZE
+    /*if(recv_wndw->free_slt < 9) {
+        printf ("here\n");
+        hdr = get_ack_hdr(recv_wndw->exp_seq, ts, 0); 
+    }
+    else
+    */
+    assert(recv_wndw->buff[recv_wndw->win_tail].is_valid);
+    win_size = RECV_WINDOW_SIZE - (recv_wndw->exp_seq - 
+                        recv_wndw->buff[recv_wndw->win_tail].entry->seq_num);
+    
+    send_ack(sockfd, get_ack_hdr(recv_wndw->exp_seq, ts, win_size));
 }
 
 int
 r_add_window (int sockfd, struct recv_window *recv_wndw,    
                    struct window_pckt *pckt) {
     int diff = 0, flag = 0;
-    printf("\n Producer strarts\n");
+    //printf("\n Producer strarts\n");
     pthread_mutex_lock(&recv_wndw->mut);
-    printf("\n entering producer %d\n", recv_wndw->free_slt);
+    //printf("\n entering producer %d\n", recv_wndw->free_slt);
+
     // If head is empty
     if (recv_wndw->free_slt == RECV_WINDOW_SIZE) {
-
         recv_wndw->win_head = (recv_wndw->win_head + 1) %
                                              RECV_WINDOW_SIZE;
-
 
         recv_wndw->buff[recv_wndw->win_head].is_valid = 1; 
         recv_wndw->buff[recv_wndw->win_head].entry = pckt;
@@ -138,7 +138,6 @@ r_add_window (int sockfd, struct recv_window *recv_wndw,
         recv_wndw->free_slt--;
         send_ack_func(sockfd, recv_wndw, pckt->time_st);
         goto end;
-        //return 1;
     }
 
     // if this is new beyond head
@@ -151,7 +150,6 @@ r_add_window (int sockfd, struct recv_window *recv_wndw,
             fprintf(stderr,"\n Sorry no place in buffer ");
             flag = 1;
             goto end;
-            //return 0;
         }
         
         recv_wndw->free_slt -= diff;
@@ -163,41 +161,37 @@ r_add_window (int sockfd, struct recv_window *recv_wndw,
         
         send_ack_func(sockfd, recv_wndw, pckt->time_st);
         goto end;
-        //return 1;
+    
     } else {
-        
+        // if this packet is less than head
+
         diff = pckt->seq_num - 
                 recv_wndw->buff[recv_wndw->win_head].entry->seq_num;
         diff = (recv_wndw->win_head + diff + RECV_WINDOW_SIZE) % RECV_WINDOW_SIZE;
-        // if diff is negative
-        //diff = (recv_wndw->win_tail + (pckt->seq_num - 
-        //                recv_wndw->buff[recv_wndw->win_tail].entry->seq_num)) % RECV_WINDOW_SIZE;
         
         if (pckt->seq_num < recv_wndw->exp_seq) {
-            fprintf(stderr,"\n Duplicated Packet. Already Acked");
+            fprintf(stderr,"\n Duplicated Packet with Seq num %d. Already Acked", pckt->seq_num);
             flag = 1;
             goto end;
-            //return 0;
         }
-
+   
         if(recv_wndw->buff[diff].is_valid == 0) {
             recv_wndw->buff[diff].is_valid = 1;
             recv_wndw->buff[diff].entry = pckt;
         }
+
         send_ack_func(sockfd, recv_wndw, pckt->time_st);
         goto end;
-        //return 1;
     }
 
 end:
-    printf("\n Producer end\n");
+    //printf("\n Producer end\n");
     pthread_mutex_unlock(&recv_wndw->mut);
     if (flag)
         return 0;
     
     return 1;
 }
-
 
 
 /* remove pckt from sending window */
@@ -219,21 +213,21 @@ s_rem_window (struct sender_window *snd_wndw) {
 int 
 r_rem_window (struct recv_window *recv_wndw) {
     pthread_mutex_lock(&recv_wndw->mut); 
-    printf("\n consumer func starts\n");    
+    //printf("\n consumer func starts\n");    
     if (recv_wndw->free_slt < RECV_WINDOW_SIZE) {
-        
+
         recv_wndw->buff[recv_wndw->win_tail].is_valid = 0;
         recv_wndw->buff[recv_wndw->win_tail].entry = NULL;
         recv_wndw->win_tail = (recv_wndw->win_tail + 1) %
                                         RECV_WINDOW_SIZE;
         
-        printf("\n before consumer func ends %d\n", recv_wndw->free_slt);    
+        //printf("\n before consumer func ends %d\n", recv_wndw->free_slt);    
         recv_wndw->free_slt++;
         pthread_mutex_unlock(&recv_wndw->mut);
         return 1;
     }
    
-    printf("\n consumer func ends\n");    
+    //printf("\n consumer func ends\n");    
     pthread_mutex_unlock(&recv_wndw->mut);
     return 0;
 }
@@ -244,7 +238,7 @@ void* consumer_func () {
     memset(buf, 0, sizeof(buf));
     int len = 0;
    
-    int out_fd = open (OUTFILE, O_WRONLY | O_CREAT);
+    int out_fd = open (OUTFILE, O_WRONLY | O_CREAT | O_TRUNC);
     
     if (out_fd < 0) {
         fprintf(stderr, "Unable to open outfile\n");
@@ -254,7 +248,7 @@ void* consumer_func () {
     /* iterate from tail to last ack and remove them from buff */
     while (should_terminate == 0) {
         while ( r_win->buff[r_win->win_tail].is_valid == 1 &&
-            r_win->buff[r_win->win_tail].entry->seq_num <= r_win->exp_seq) {
+                r_win->buff[r_win->win_tail].entry->seq_num < r_win->exp_seq) {
             
             len = r_win->buff[r_win->win_tail].entry->data_len;
             
@@ -278,7 +272,7 @@ void* consumer_func () {
 
 /* Function to handle sending logic */
 void
-sending_func (int sockfd, void *read_buf, int bytes_rem) {
+sending_func (int sockfd, void *read_buf, int bytes_rem, int client_win_size) {
     
     int acks_pending = 0, seqnum = 0, offset = 0, iter;
     msg_hdr_t *hdr   = NULL;
@@ -300,20 +294,17 @@ sending_func (int sockfd, void *read_buf, int bytes_rem) {
     
     // initialise the buffer
     snd_wndw_t *snd_wndw = s_window_init();
-    
+   
     while (bytes_rem) {
                 
         // fill in the buffer till we can
         while (snd_wndw->free_sz > 0 && bytes_rem > 0) {
-
-            wndw_pckt_t *wndw_pckt = (wndw_pckt_t *)malloc(sizeof(wndw_pckt_t));
-            char *buf_temp         = (char *)malloc(CHUNK_SIZE);
+        
+            wndw_pckt_t *wndw_pckt = (wndw_pckt_t *)calloc(1, sizeof(wndw_pckt_t));
+            char *buf_temp         = (char *)calloc(1, CHUNK_SIZE + 1);
             
             bytes_to_copy = min(bytes_rem, CHUNK_SIZE);
             bytes_rem    -= bytes_to_copy;
-            
-            memset(buf_temp, 0, CHUNK_SIZE);
-            bzero(wndw_pckt, sizeof(struct window_pckt));
             
             memcpy(buf_temp, read_buf + offset, bytes_to_copy);
             offset += bytes_to_copy;
@@ -336,17 +327,21 @@ sending_func (int sockfd, void *read_buf, int bytes_rem) {
 send:
         count   = 0; 
         ack_cnt = 0;
-        
-        // send the packets
-        for (iter = snd_wndw->win_tail; iter < snd_wndw->win_head;) {
+        // Shouldnt we send the next packet if we receive an ack for the 
+        // first time as well?
 
+        // send the packets
+        for (iter = snd_wndw->win_tail; client_win_size != 0;) {
+            
+            /* Testing funciton to drop 112 packet */
             if(snd_wndw->buff[iter]->seq_num == 112 && flag) {
                 iter = (iter + 1)%SEND_WINDOW_SIZE;
                 count++;
                 flag = 0;
                 continue;
             }
-
+            
+            client_win_size--;
             if (send_packet(sockfd, snd_wndw->buff[iter]->header, 
                                     snd_wndw->buff[iter]->body, 
                                     snd_wndw->buff[iter]->data_len) < 0) {
@@ -358,12 +353,17 @@ send:
 
             iter = (iter + 1)%SEND_WINDOW_SIZE;
             count++;
+            
+            /* iter goes from tail to head, if its equal to head
+             * no more packets to send 
+             */
+            if (iter == snd_wndw->win_head)
+                break;
         }
-
+        
         /* Start the timer. */
         rtt_start_timer (rtt_start(&rtt_s));
        
-
         /* Handle the timer signal, and retransmit. */
         if (sigsetjmp(jmp, 1) != 0) {
             
@@ -400,7 +400,8 @@ send:
                 break; 
             }
 
-            printf("\n Rcvd ACK. Seq Num : %d", recv_msg_hdr.seq_num);
+            printf("\nRcvd ACK. Seq Num : %d, cli win_size %d", 
+                                                recv_msg_hdr.seq_num, recv_msg_hdr.win_size);
             
             /* If type of message is ACK, check seq num 
             *  TODO: if same ack no is received increment ackcnt
@@ -409,9 +410,11 @@ send:
             if (recv_msg_hdr.msg_type ==  __MSG_ACK &&
                 recv_msg_hdr.seq_num > latest_ack) {
                 
-                latest_ack = recv_msg_hdr.seq_num;
-                ack_cnt    = 1;
-    
+                latest_ack      = recv_msg_hdr.seq_num;
+                ack_cnt         = 1;
+                client_win_size = recv_msg_hdr.win_size;
+                // printf("client win size recvd %d\n", client_win_size);
+
             } else if (recv_msg_hdr.seq_num == latest_ack) {
                 ack_cnt++;
                 
@@ -428,7 +431,6 @@ send:
                     rtt_start_timer(0); 
                     goto send;
                 }
-
             }
             count--;
         }
@@ -444,7 +446,7 @@ process_acks:
             if (snd_wndw->free_sz < SEND_WINDOW_SIZE) {
                 snum = snd_wndw->buff[snd_wndw->win_tail]->seq_num;
                 
-                //printf("\n DEBUG %d, Rcvd ACK Seq Num : %d", latest_ack, snum);
+                printf("\n DEBUG latest ack %d, Rcvd ACK Seq Num : %d", latest_ack, snum);
                 if(snum >= latest_ack)
                     break;
 
@@ -464,12 +466,17 @@ process_acks:
     free(snd_wndw);
 }
 
+int
+drop_probability(){
+    
+    return (drand48() < cli_params.prob_loss) ? 1: 0;
+}
+
 void*
 receiving_func (void* data) {
     
     int sockfd = *(int *)data;
     wndw_pckt_t *r_win_pckt;
-    r_win = r_window_init(); 
     char *body;
     int seqnum = 0, len = 0;
     
@@ -485,29 +492,35 @@ receiving_func (void* data) {
         memset(recv_msg_hdr, 0, sizeof(msg_hdr_t));
 
         read_data (sockfd, &seqnum, recv_msg_hdr, body, &len);
-        body[len-1] = '\0';
+        
+        /* Drop packets according to the given probability */
+        if (drop_probability()){
+            printf ("\nPacket dropped with seq num %d", recv_msg_hdr->seq_num);
+            continue;
+        }
         
         //printf ("\n seq %d, %d, %d\n",seqnum, recv_msg_hdr->seq_num, len);
-        //if(to_drop()) {
-        //    printf("\n dropping packet");    
-        //    continue;
-        //}
         
         /* IF type of message is FIN, we are done */
 	if (recv_msg_hdr->msg_type ==  __MSG_FIN) {
 	    printf ("\n\n****** File transfer completed *****\n");
+                
+            // TODO: handle this more gracefully.
             should_terminate = 1;
 	    break;
 	}
         
         // Insert the packet in receiving window
 	if (recv_msg_hdr->msg_type ==  __MSG_FILE_DATA) {
-            printf("\n receivind file data\n");
+            printf("\n Data Seq Num %d, Timestamp %ld", 
+                            recv_msg_hdr->seq_num, recv_msg_hdr->timestamp);
+            
             r_win_pckt->seq_num  = recv_msg_hdr->seq_num;
             r_win_pckt->time_st  = recv_msg_hdr->timestamp;
             r_win_pckt->data_len = CHUNK_SIZE;
             r_win_pckt->body     = body;
-            r_add_window (sockfd, r_win, r_win_pckt);
+
+            r_add_window (sockfd, r_win, r_win_pckt);    
         }
     }
     

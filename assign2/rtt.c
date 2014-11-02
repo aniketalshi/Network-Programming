@@ -24,12 +24,15 @@ rtt_minmax(uint32_t rto)
 void
 rtt_start_timer(long int ms){
     struct itimerval timer;
+    
     /* Configure the timer to expire after 'ms' msec... */
     timer.it_value.tv_sec = ms / 1000;
     timer.it_value.tv_usec = (ms % 1000) * 1000;
+    
     /* and every 0 msec after that. */
     timer.it_interval.tv_sec = 0;
     timer.it_interval.tv_usec = 0;
+    
     /* start r */
     setitimer (ITIMER_REAL, &timer, 0);
 }
@@ -154,7 +157,6 @@ int
 rtt_timeout(struct rtt_info *ptr)
 {
 	ptr->rtt_rto = ptr->rtt_rto << 1;		/* next RTO */
-        printf("%d", ptr->rtt_nrexmt);	
 	ptr->rtt_rto = rtt_minmax(ptr->rtt_rto);
 	
 	if (++ptr->rtt_nrexmt > RTT_MAXNREXMT)

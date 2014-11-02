@@ -287,74 +287,33 @@ read_data (int sockfd, int *seqnum, msg_hdr_t *recv_msg_hdr, void *body, int *le
     //wndw_pckt_t *r_win_pckt;
     struct iovec recvvec[2];
     int cnt = 1;
+        
+    memset (&pcktmsg, 0, sizeof(struct msghdr));
     
-        
-        memset (&pcktmsg, 0, sizeof(struct msghdr));
-        //r_win_pckt = malloc( sizeof(wndw_pckt_t));
-    	
-    	pcktmsg.msg_name     = NULL;
-    	pcktmsg.msg_namelen  = 0;
-    	pcktmsg.msg_iov      = recvvec;
-    	pcktmsg.msg_iovlen   = 2;
+    pcktmsg.msg_name     = NULL;
+    pcktmsg.msg_namelen  = 0;
+    pcktmsg.msg_iov      = recvvec;
+    pcktmsg.msg_iovlen   = 2;
 
-    	recvvec[0].iov_len   = sizeof(msg_hdr_t);
-    	recvvec[0].iov_base  = (msg_hdr_t *)recv_msg_hdr;
-    	recvvec[1].iov_len   = CHUNK_SIZE;
-    	recvvec[1].iov_base  = (void *)body;
+    recvvec[0].iov_len   = sizeof(msg_hdr_t);
+    recvvec[0].iov_base  = (msg_hdr_t *)recv_msg_hdr;
+    recvvec[1].iov_len   = CHUNK_SIZE;
+    recvvec[1].iov_base  = (void *)body;
 
-    	n_bytes = recvmsg(sockfd, &pcktmsg, 0);
-	
-	if (n_bytes <= 0) {
-	    printf ("\n Connection Terminated");
-	    return 0;
-	}
-        
-	///* IF type of message is FIN, we are done */
-	//if (recv_msg_hdr->msg_type ==  __MSG_FIN) {
-	//    printf ("\n\n****** File transfer completed *****\n");
-	//    return; 
-	//}
-
-        *seqnum = recv_msg_hdr->seq_num;
-        *len    = CHUNK_SIZE;
-
-
-
-        //if (recv_msg_hdr->msg_type ==  __MSG_FILE_DATA) {
-	//    //(char *)body[n_bytes] = '\0';
-	//    puts ((char *)body);
-
-
-        //    printf("Received packet with sequence number: %d", recv_msg_hdr->seq_num);
-        //    /* Add packets to window */
-        //    printf("\n packet: %d\n", recv_msg_hdr->seq_num);
-        //    //r_win_pckt->seq_num  = recv_msg_hdr.seq_num;
-        //    *seqnum = recv_msg_hdr->seq_num;
-        //    
-        //    //header   = recv_msg_hdr;
-        //    
-        //    //body     = buff;
-        //    *len     = CHUNK_SIZE;
-        //    
-        //    //r_win_pckt->data_len = CHUNK_SIZE;
-        //    //printf("\n%d -- %d\n", r_win_pckt->seq_num, r_win->exp_seq);        
-        //    //printf("here0\n");
-        //    //r_add_window (r_win, r_win_pckt);
-        //    //
-        //    //// sending ack
-        //    //
-        //    //printf("here1\n");
-        //    //recv_msg_hdr.msg_type = __MSG_ACK;
-        //    //recv_msg_hdr.seq_num = r_win->exp_seq;
-        //    //send_ack (sockfd, &recv_msg_hdr);
-        //    //r_rem_window (r_win);
-
-        //}
-    return;
+    n_bytes = recvmsg(sockfd, &pcktmsg, 0);
+    
+    if (n_bytes <= 0) {
+        printf ("\n Connection Terminated");
+        return 0;
+    }
+    
+    *seqnum = recv_msg_hdr->seq_num;
+    *len    = CHUNK_SIZE;
+    
+    return 1;
 }
 
-/* Function to construct packet 
- * and send packet */
+/* Function to construct packet and send packet */
 int
 send_ack (int sockfd, msg_hdr_t *header) {
     

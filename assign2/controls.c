@@ -294,16 +294,10 @@ void* consumer_func () {
     memset(buf, 0, sizeof(buf));
     int len = 0, flag = 0;
    
-    int out_fd = open (OUTFILE, O_WRONLY | O_CREAT | O_TRUNC);
-    
-    if (out_fd < 0) {
-        fprintf(stderr, "Unable to open outfile\n");
-    }
-    
     /* iterate from tail to last ack and remove them from buff */
     while (should_terminate == 0) {
         flag = 0;
-        usleep (get_sleep_secs () * 1000);
+        //usleep (get_sleep_secs () * 1000);
         
         while (r_win->buff[r_win->win_tail].is_valid == 1 &&
                 r_win->buff[r_win->win_tail].entry->seq_num < r_win->exp_seq) {
@@ -320,7 +314,8 @@ void* consumer_func () {
             }
             printf ("%d\t",  r_win->buff[r_win->win_tail].entry->seq_num);   
             // write to the outfile
-            write(out_fd, r_win->buff[r_win->win_tail].entry->body, len);
+            //write(out_fd, r_win->buff[r_win->win_tail].entry->body, len);
+            printf("\n%s", r_win->buff[r_win->win_tail].entry->body);
             
             // remove entry from tail
             r_rem_window(r_win);
@@ -331,7 +326,6 @@ void* consumer_func () {
         }
     }
     
-    close(out_fd);
     pthread_exit(NULL);
 }
 
@@ -379,7 +373,6 @@ send_probe (int sockfd, int *client_win_size) {
         
         if ((recv_msg_hdr.msg_type ==  __MSG_PROBE_RESP) && 
                                     (recv_msg_hdr.win_size > 0)) {
-            printf ("\n probing client");
             *client_win_size = recv_msg_hdr.win_size;
             break;
         }
@@ -626,11 +619,13 @@ sending_func_new (int sockfd, int file_d) {
     signal (SIGALRM, sigalarm_handler);
     memset (&rtt_s, 0, sizeof(rtt_s));
     rtt_init (&rtt_s);
+    int next_send = 0;
     
     /* Initialize the retransmit count to 0. */
     rtt_newpack (&rtt_s);
     int count = 0, done_read_flag = 0;
     
+    int update_next_send = 0;
     
 send_packets: 
         //printf("\n count :%d", count);
@@ -645,39 +640,18 @@ send_packets:
         int ack_cnt = 0;
         //printf("%d", bytes_rem);
         // start from tail add upto cwnd and send 
-        printf("cwindow size: %d , adv window size %d, sending Packets with seq num:", 
-                                                            snd_wndw->cwind, adv_window_size);
+        printf("\n\n\n"); 
+        printf("\nc_window size: %d , adv window size %d, ssthresh %d \n", 
+                                                            snd_wndw->cwind, adv_window_size, snd_wndw->ssthresh);
+      
+        printf("\nsending Packets with seq num:");
+
+        count  = (next_send - snd_wndw->win_tail + RECV_WINDOW_SIZE) % RECV_WINDOW_SIZE;
         
-         for (iter = snd_wndw->win_tail, count = 0; 
-                                count < min(snd_wndw->cwind, adv_window_size);) {
-            
-            printf("\n entering for loop\n");
-            // if entry is valid and this is not fast retransmit then skip it
-            if (snd_wndw->buff[iter].is_valid == 1 && fast_ret_flag == 0) {
-                iter = (iter + 1) % SEND_WINDOW_SIZE;
-                count++;
-                //printf("\ncoming here\n");
-                continue;
-            }
-            
-            // if entry is valid and ret flag is set, send
-            if (snd_wndw->buff[iter].is_valid == 1 && fast_ret_flag == 1) {
-                
-                if (send_packet(sockfd, snd_wndw->buff[iter].entry->header, 
-                                        snd_wndw->buff[iter].entry->body, 
-                                        snd_wndw->buff[iter].entry->data_len) < 0) {
-                    fprintf(stderr, "Error sending packet");	
-                    return;
-                }
-                printf("\t %d", snd_wndw->buff[iter].entry->seq_num);
+        //printf ("\n Next send: %d , %d", next_send, snd_wndw->win_tail);
 
-                count++;
-                iter = (iter + 1) % SEND_WINDOW_SIZE;
-                continue;
-            }
-
-            // if entry is not valid, insert 
-            if (snd_wndw->buff[iter].is_valid == 0 && done_read_flag == 0) {
+        for (iter = next_send; count < min(snd_wndw->cwind, adv_window_size);) {
+            if (snd_wndw->buff[iter].is_valid == 0) {
    
                 wndw_pckt_t *wndw_pckt = (wndw_pckt_t *)calloc(1, sizeof(wndw_pckt_t));
                 char *buf_temp         = (char *)calloc(1, CHUNK_SIZE + 1);
@@ -715,27 +689,26 @@ send_packets:
                 
                 snd_wndw->buff[iter].is_valid = 1;
                 snd_wndw->buff[iter].entry    = wndw_pckt;
+           } 
             
-            
-                if (send_packet(sockfd, snd_wndw->buff[iter].entry->header, 
-                                        snd_wndw->buff[iter].entry->body, 
-                                        snd_wndw->buff[iter].entry->data_len) < 0) {
-                    fprintf(stderr, "Error sending packet");	
-                    return;
-                }
-                printf("\t %d", snd_wndw->buff[iter].entry->seq_num);
+           if (send_packet(sockfd, snd_wndw->buff[iter].entry->header, 
+                                   snd_wndw->buff[iter].entry->body, 
+                                   snd_wndw->buff[iter].entry->data_len) < 0) {
+               fprintf(stderr, "Error sending packet");	
+               return;
+           }
+           printf("\t %d", snd_wndw->buff[iter].entry->seq_num);
 
-                count++;
-                iter = (iter + 1) % SEND_WINDOW_SIZE;
-            }
-
-            if (snd_wndw->buff[snd_wndw->win_tail].is_valid == 0 && done_read_flag == 1) {
-                return;
-            }
+           count++;
+           iter = (iter + 1) % SEND_WINDOW_SIZE;
+           
+           // if (snd_wndw->buff[snd_wndw->win_tail].is_valid == 0 && done_read_flag == 1) {
+           //     return;
+           // }
         }
-        printf("\n"); 
         fast_ret_flag = 0;
-        
+        printf("\n\n"); 
+        next_send = iter;
         //if (snd_wndw->cwind >= snd_wndw->ssthresh)
 
         //PRINT_BUF(snd_wndw, SEND_BUF, count);
@@ -751,10 +724,12 @@ send_packets:
                 
                 // set congestion window size to 1
                 snd_wndw->ssthresh = snd_wndw->cwind / 2;
+                threshval = 0;
                 snd_wndw->cwind = 1;
                 threshval = 0;
                 window    = 0;
                 fast_ret_flag = 1;
+                next_send = snd_wndw->win_tail;
                 goto send_packets;
             } else{
                 /* Maximum number of retransmits sent; give up. */
@@ -791,7 +766,7 @@ send_packets:
             }
             
             adv_window_size = recv_msg_hdr.win_size;
-            printf("Rcvd ACK. Seq Num : %d, advertised win_size %d\n", 
+            printf("\nRcvd ACK. Seq Num : %d, advertised win_size %d\n", 
                                       recv_msg_hdr.seq_num, recv_msg_hdr.win_size);
             
             assert(snd_wndw->buff[snd_wndw->win_tail].is_valid);
@@ -804,24 +779,32 @@ send_packets:
                 break;
             } else {
                 ++ack_cnt;
+                printf ("Duplicate ACK %d\t", recv_msg_hdr.seq_num);
                 if (ack_cnt == 3) {
-                    printf("\n Received ACK 3 times, doing fast retransmit\n");
+                    printf("\n\t\t\t Received ACK 3 times, doing fast retransmit\n");
                     fast_ret_flag = 1; 
                     //stop timer
                     rtt_start_timer (0);
 
                     // half the congestion window
                     snd_wndw->cwind /= 2;
-                    snd_wndw->ssthresh = snd_wndw->cwind;
+                    if (snd_wndw->cwind == 0)
+                        snd_wndw->cwind = 1;
                     
+                    snd_wndw->ssthresh = snd_wndw->cwind;
+                    threshval = 0;
+                    next_send = snd_wndw->win_tail;
                     goto send_packets;
                 }
             }
         }
-        
+
+
         //stop timer
         rtt_start_timer (0);
  
+        update_next_send = 0;
+        
         /* if expected ack is recvd, delete from tail upto ack no 
         *  if not and timed out, reset sstresh to cwind/2 and cwind to 1
         */
@@ -837,29 +820,47 @@ send_packets:
 
             snd_wndw->buff[iter].is_valid = 0;
             snd_wndw->buff[iter].entry    = NULL;
-            //if(snd_wndw->cwind >= snd_wndw->ssthresh) {
-            //    
-            //    if (threshval == 0 || (window == threshval)) {
-            //        window           = 0;
-            //        threshval        = snd_wndw->cwind;
-            //        
-            //        if(window == threshval) 
-            //            snd_wndw->cwind += 1;
-            //    }
-            //    window++;
-            //} else {
-            //    snd_wndw->cwind += 1;
-            //}
-            snd_wndw->cwind += 1;
-            snd_wndw->win_tail   = (snd_wndw->win_tail + 1) % RECV_WINDOW_SIZE;
+            
+
+            if(snd_wndw->cwind < snd_wndw->ssthresh) {
+                snd_wndw->cwind += 1;
+            }
+
+            if(snd_wndw->cwind >= snd_wndw->ssthresh) {
+                
+                if (threshval == 0) {
+                    window    = 0;
+                    threshval = snd_wndw->cwind;
+                } else {
+                    window++;
+                }
+
+                if (window == threshval){
+                    snd_wndw->cwind += 1;
+                    window    = 0;
+                    threshval = snd_wndw->cwind;
+                }
+                //printf("\n\t\t\t threshval %d, window %d", threshval, window);
+            }
+            
+            //snd_wndw->cwind += 1;
+            snd_wndw->win_tail   = (snd_wndw->win_tail + 1) % SEND_WINDOW_SIZE;
+            if (snd_wndw->win_tail == next_send)
+                update_next_send = 1;
+            
             count--;
         }
+       
+        print_s_win(snd_wndw);
         
-        if (done_read_flag && count == 0)
+        if (update_next_send) {
+            next_send = snd_wndw->win_tail;
+        }
+        
+        if (done_read_flag && snd_wndw->buff[snd_wndw->win_tail].is_valid == 0)
             return;
 
         goto send_packets;
-    
 }
 
 int
@@ -911,16 +912,17 @@ receiving_func (void* data) {
         
         // Insert the packet in receiving window
 	if (recv_msg_hdr->msg_type ==  __MSG_FILE_DATA) {
-            printf("\n Data Seq Num %d, Timestamp %ld\n", 
-                            recv_msg_hdr->seq_num, recv_msg_hdr->timestamp);
+            printf("\n Data Packet received. Seq Num %d\n", recv_msg_hdr->seq_num);
             
             r_win_pckt->seq_num  = recv_msg_hdr->seq_num;
             r_win_pckt->time_st  = recv_msg_hdr->timestamp;
             r_win_pckt->data_len = CHUNK_SIZE;
             r_win_pckt->body     = body;
-
+            
             r_add_window (sockfd, r_win, r_win_pckt);    
             print_r_win (r_win);
+            //printf("\n Data Payload : \n");
+            //printf("\n %s", (char *)body);
         }
 
         // If probe packet is received

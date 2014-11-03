@@ -538,7 +538,7 @@ send:
                                                 recv_msg_hdr.seq_num, recv_msg_hdr.win_size);
             
             /* If type of message is ACK, check seq num 
-            *  TODO: if same ack no is received increment ackcnt
+            *        if same ack no is received increment ackcnt
             *        if it reaches 3, we can do fast retransmit 
             */
             if (recv_msg_hdr.msg_type ==  __MSG_ACK &&
@@ -642,7 +642,7 @@ receiving_func (void* data) {
             send_fin_ack(sockfd);
             printf("\n Client Terminating"); 
             
-            // TODO: handle this more gracefully.
+            
             should_terminate = 1;
 	    break;
 	}
@@ -686,7 +686,5 @@ receiving_func (void* data) {
         }
     }
     
-    // TODO: Consumer func works here without threading
-    //consumer_func();
     pthread_exit(NULL);
 }

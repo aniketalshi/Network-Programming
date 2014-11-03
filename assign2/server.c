@@ -46,7 +46,7 @@ send_file (conn_struct_t *conn, char *filename, int client_win_size) {
     
     //TODO: Handle case where no file present 
     if (file_d == -1) {
-	printf("No such file present !");
+	printf("No such file present !\n");
 	return;
     }
     
@@ -257,8 +257,7 @@ listen_reqs (struct sock_struct *sock_struct_head) {
 		    service_client_req(curr, &cli_addr, conn, msg);
 	            exit(0);	
 		} else {
-		    //TODO: store this pid of child in our table
-                    printf("\n %d came in parent\n", pid);
+                    printf("\n Child with PID: %d spawned.\n", pid);
                     conn->pid = pid;
                     //sigprocmask(SIG_UNBLOCK, &signal_set, NULL);
 		}

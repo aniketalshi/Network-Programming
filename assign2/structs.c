@@ -6,6 +6,9 @@
 #define CLI_FILE    "client.in"
 
 struct rtt_info rtts;
+int server_port;
+int max_win_size;
+int recv_win_size;
 
 /* utility function */
 
@@ -22,7 +25,7 @@ print_ip_port(struct sockaddr_in *st) {
 
 /* Take input from server.in */
 void
-server_input(int *server_port, int *max_win_size){
+server_input(){
     char temp[MAXLINE];
     
     FILE *fp = NULL;
@@ -32,14 +35,14 @@ server_input(int *server_port, int *max_win_size){
     }
 
     fscanf(fp, "%s", temp);
-    *server_port = atoi(temp);
+    server_port = atoi(temp);
 
     fscanf(fp, "%s", temp);
-    *max_win_size = atoi(temp);
+    max_win_size = atoi(temp);
 
     printf("=============== Read from server.in ===============\n");
-    printf("Server Port Number          : %d\n", *server_port);
-    printf("Maximum sliding window size : %d\n", *max_win_size);
+    printf("Server Port Number          : %d\n", server_port);
+    printf("Maximum sliding window size : %d\n", max_win_size);
     printf("===================================================\n");
 }
 
@@ -63,7 +66,8 @@ client_input () {
 
     fscanf(fp, "%s", temp);
     cli_params.window_size = atoi(temp);
-				        
+    recv_win_size = cli_params.window_size;
+    
     fscanf(fp, "%s", temp);
     cli_params.seed_val = atoi(temp);
 						    
@@ -352,7 +356,7 @@ read_data (int sockfd, int *seqnum, msg_hdr_t *recv_msg_hdr, void *body, int *le
     pcktmsg.msg_iovlen   = 2;
 
     recvvec[0].iov_len   = sizeof(msg_hdr_t);
-    recvvec[0].iov_base  = (msg_hdr_t *)recv_msg_hdr;
+    recvvec[0].iov_base  = (void *)recv_msg_hdr;
     recvvec[1].iov_len   = CHUNK_SIZE;
     recvvec[1].iov_base  = (void *)body;
 
@@ -407,15 +411,7 @@ send_fin (int sockfd, void *send_buf) {
     struct iovec recvvec[1];
     int n_bytes, flags;
 
-    struct timeval timeout;
-    timeout.tv_sec = 3;
-    timeout.tv_usec = 0;
-    
     memset(send_buf, 0, CHUNK_SIZE);
-    if (setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, 
-                                (char *)&timeout, sizeof(timeout)) < 0) {
-        perror("Socket option failed\n");
-    }
     
     while (count < 3) {
         // send the data
@@ -494,7 +490,7 @@ send_fin_ack (int sockfd) {
         pcktmsg.msg_iovlen   = 2;
 
         recvvec[0].iov_len   = sizeof(msg_hdr_t);
-        recvvec[0].iov_base  = (msg_hdr_t *)recv_msg_hdr;
+        recvvec[0].iov_base  = (void *)recv_msg_hdr;
         recvvec[1].iov_len   = CHUNK_SIZE;
         recvvec[1].iov_base  = (void *)body;
         

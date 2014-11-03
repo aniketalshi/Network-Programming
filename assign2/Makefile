@@ -1,10 +1,10 @@
 CC = gcc
 
-LIBS =  -lresolv -lnsl -lpthread -lm\
-	./Stevens/libunp.a
+LIBS = -lresolv -lsocket -lnsl -lpthread -lm\
+	/home/courses/cse533/Stevens/unpv13e_solaris2.10/libunp.a\
 
-FLAGS =  -g -O1
-CFLAGS = ${FLAGS} -I./Stevens/lib
+FLAGS = -g -O2
+CFLAGS = ${FLAGS} -I /home/courses/cse533/Stevens/unpv13e_solaris2.10/lib
 
 all: prifinfo_plus server client
 

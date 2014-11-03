@@ -49,6 +49,7 @@ rtt_init(struct rtt_info *ptr)
 	ptr->rtt_srtt   = 0;
 	ptr->rtt_rttvar = 3000;		    
 	ptr->rtt_rto = rtt_minmax(RTT_RTOCALC(ptr));
+	rtt_debug(ptr);
 		/* first RTO at (srtt + (4 * rttvar)) = 3000 milliseconds */
 }
 /* end rtt1 */
@@ -81,6 +82,8 @@ int
 rtt_start(struct rtt_info *ptr)
 {
 	return ptr->rtt_rto;		/* round float to int */
+
+
 		/* 4return value can be used as: alarm(rtt_start(&foo)) */
 }
 /* end rtt_ts */
@@ -145,6 +148,7 @@ rtt_stop(struct rtt_info *ptr, uint32_t ms)
 	ptr->rtt_rttvar += ptr->rtt_rtt;	/* h = 1/4 */
 
 	ptr->rtt_rto = rtt_minmax(RTT_RTOCALC(ptr));
+	rtt_debug(ptr);
 }
 
 /*
@@ -158,8 +162,10 @@ rtt_timeout(struct rtt_info *ptr)
 {
 	ptr->rtt_rto = ptr->rtt_rto << 1;		/* next RTO */
 	ptr->rtt_rto = rtt_minmax(ptr->rtt_rto);
+	++ptr->rtt_nrexmt;
+	rtt_debug(ptr);
 	
-	if (++ptr->rtt_nrexmt > RTT_MAXNREXMT)
+	if (ptr->rtt_nrexmt > RTT_MAXNREXMT)
 		return(-1);			/* time to give up for this packet */
 	return(0);
 }

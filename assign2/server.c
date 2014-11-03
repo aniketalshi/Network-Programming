@@ -60,7 +60,7 @@ send_file (conn_struct_t *conn, char *filename, int client_win_size) {
     //    memset(send_buf, 0, CHUNK_SIZE * 10);
     //}
 
-    sending_func_new(conn->conn_sockfd, file_d);
+    sending_func_new(conn->conn_sockfd, file_d, client_win_size);
     /* send the fin packet */ 
     send_fin (conn->conn_sockfd, (void *)send_buf);
     printf("\n==========File Transfer complete =============\n");
@@ -259,7 +259,6 @@ listen_reqs (struct sock_struct *sock_struct_head) {
 		    service_client_req(curr, &cli_addr, conn, msg);
 	            exit(0);	
 		} else {
-                    printf("\n Child with PID: %d spawned.\n", pid);
                     conn->pid = pid;
                     //sigprocmask(SIG_UNBLOCK, &signal_set, NULL);
 		}
@@ -276,9 +275,9 @@ main(int argc, char* argv[]) {
     struct sockaddr_in *sa;
     const int on = 1;
     int is_loopback = 0, sockfd;
-    int server_port = 0;                                                                                                                                     
+    
     /* read input from server.in input file */
-    server_input(&server_port, &max_sending_win_size);
+    server_input();
 
     signal(SIGCHLD, sigchild_handler);
     /* Iterate over all interfaces and store values in struct */

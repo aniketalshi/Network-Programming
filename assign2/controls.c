@@ -88,10 +88,12 @@ get_seq_num() {
 snd_wndw_t *
 s_window_init () {
     snd_wndw_t *snd_wndw = (snd_wndw_t *)calloc(1, sizeof(snd_wndw_t));
-    
+   
+    snd_wndw->buff = (buff_entry_t *) calloc(SEND_WINDOW_SIZE, 
+						    sizeof(buff_entry_t));
+
     snd_wndw->win_head = 0;
     snd_wndw->win_tail = 0;
-    //TODO: initialize with receiving sending window size?
     snd_wndw->free_sz  = SEND_WINDOW_SIZE;
     snd_wndw->cwind    = 1;
     snd_wndw->ssthresh = SEND_WINDOW_SIZE/2;
@@ -104,7 +106,10 @@ recv_wndw_t *
 r_window_init () {
     
     recv_wndw_t *recv_wndw = (recv_wndw_t *)calloc(1, sizeof(recv_wndw_t));
-    
+   
+    recv_wndw->buff = (buff_entry_t *) calloc (RECV_WINDOW_SIZE,
+							sizeof(buff_entry_t));
+
     recv_wndw->win_head  = -1;
     recv_wndw->win_tail  = 0;
     recv_wndw->last_ack  = 0;
@@ -601,9 +606,10 @@ process_acks:
 #endif
 
 void 
-sending_func_new (int sockfd, int file_d) {
+sending_func_new (int sockfd, int file_d, int win_size_sent) {
 
-    static exp_ack = 12, adv_window_size = 10;
+    static int exp_ack = 12;
+    int adv_window_size = win_size_sent;
     snd_wndw_t *snd_wndw = s_window_init();
     int seqnum, offset = 0, latest_ack = 0, iter = 0, bytes_to_copy = 0;
     

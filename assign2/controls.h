@@ -2,9 +2,9 @@
 #define __CONTROLS_H
 #include "structs.h"
 
+#define MAX_ACK_CNT             3
 #define SEND_WINDOW_SIZE        10
 #define RECV_WINDOW_SIZE        10
-#define MAX_ACK_CNT             3
 
 #define OUTFILE    "out.txt"
 
@@ -30,7 +30,7 @@ typedef struct buff_entry {
 }buff_entry_t;
 
 typedef struct sender_window {
-    buff_entry_t buff [SEND_WINDOW_SIZE]; // Circular buff
+    buff_entry_t *buff;			  // Circular buff
     int win_head;                         // Head of buff
     int win_tail;                         // Tail of buff 
     int free_sz;                          // free slots avail
@@ -38,17 +38,8 @@ typedef struct sender_window {
     int ssthresh;                         // ssthreshold
 }snd_wndw_t;
 
-/*
-typedef struct sender_window {
-    wndw_pckt_t *buff [SEND_WINDOW_SIZE]; // Circular buff
-    int win_head;                         // Head of buff
-    int win_tail;                         // Tail of buff 
-    int free_sz;                          // free slots avail
-}snd_wndw_t;
-*/
-
 typedef struct recv_window {
-    buff_entry_t buff [RECV_WINDOW_SIZE]; // Circular buff
+    buff_entry_t *buff;			  // Circular buff
     int win_head;                         // Head of buff
     int win_tail;                         // Tail of buff
     int free_slt;                         // No of free slots after head and before tail
@@ -73,7 +64,7 @@ int  r_rem_window   (struct recv_window *recv_wndw);   /* remove pckt from recv 
 
 /* Main sending logic */
 //void sending_func (int sockfd, void *read_buf, int bytes_rem, int sending_win_size);
-void sending_func_new (int sockfd, int file_d);
+void sending_func_new (int sockfd, int file_d, int win_size_sent);
 
 /* To get next seq num */
 long int get_seq_num ();

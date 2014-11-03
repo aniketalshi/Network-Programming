@@ -7,6 +7,10 @@
 #include "unp.h"
 #include "unpifiplus.h"
 
+extern int server_port;
+extern int max_win_size;
+extern int recv_win_size;
+
 #define IPLEN		        INET_ADDRSTRLEN
 #define MAXFD		        256
 #define BUFF_SIZE	        1024*1024
@@ -85,6 +89,8 @@ check_new_conn (struct sockaddr_in *cli,
 conn_struct_t *
 insert_conn_struct (struct sockaddr_in *cli,
 		    conn_struct_t **conn_head);
+/* reading input from server */
+void server_input();
 
 /* To construct a msg hdr */
 msg_hdr_t *get_hdr (int msg_type, uint32_t seq_num, uint32_t ws);

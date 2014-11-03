@@ -278,9 +278,9 @@ r_rem_window (struct recv_window *recv_wndw) {
 
 int 
 get_sleep_secs () {
-int sleep = -1 * (cli_params.read_rate * (log (drand48()) / log (2)));
-printf ("Consumer sleeping for %d secs.\n", sleep);
-return sleep;
+    int sleep = -1 * (cli_params.read_rate * log (drand48()));
+    //printf ("Consumer sleeping for %d ms.\n", sleep);
+    return sleep;
 }
 
 void* consumer_func () {
@@ -297,12 +297,13 @@ void* consumer_func () {
     /* iterate from tail to last ack and remove them from buff */
     while (should_terminate == 0) {
         flag = 0;
-        sleep (get_sleep_secs ());
+        usleep (get_sleep_secs () * 1000);
         
         while ( r_win->buff[r_win->win_tail].is_valid == 1 &&
                 r_win->buff[r_win->win_tail].entry->seq_num < r_win->exp_seq) {
-            if (!flag)
+            if (!flag) {
                 printf ("Consumer read: ");
+            }
             flag = 1;
             len = r_win->buff[r_win->win_tail].entry->data_len;
             
@@ -320,7 +321,7 @@ void* consumer_func () {
         }
         if (flag){
             printf ("\n"); 
-            print_r_win (r_win);
+            //print_r_win (r_win);
         }
     }
     
@@ -676,8 +677,9 @@ receiving_func (void* data) {
             } else {
                 winsize = RECV_WINDOW_SIZE;
             }
-
-            printf ("\n Probe received %d\n", winsize);
+                
+            printf ("\n Probe received, sending winsize: %d\n", winsize);
+            //print_r_win (r_win);
             send_ack(sockfd, get_hdr(__MSG_PROBE_RESP, 0, winsize)); 
             
             pthread_mutex_unlock(&r_win->mut);

@@ -67,15 +67,39 @@ get_client_ip (struct sock_struct *sock_struct_head,
     return;
 }
 
+
+void
+print_srvr_addr (int sockfd) {
+
+    int len_inet; /* length */
+
+    struct sockaddr_in adr_inet;/* AF_INET */
+    int z;
+    len_inet = sizeof adr_inet;
+    
+    //TODO: Print out server info calling getpeername
+    z = getpeername(sockfd, (struct sockaddr *)&adr_inet, &len_inet);
+    if ( z == -1) {
+        printf ("getpeername failed.\n"); /* Failed */
+    }
+
+    /*
+     * Convert address into a string
+     * form that can be displayed:
+     */
+    printf("Server address: %s:%u \n",
+            inet_ntoa(adr_inet.sin_addr),
+            (unsigned)ntohs(adr_inet.sin_port));
+}
+
 void 
 cli_func (int sockfd, SA *srv_addr, socklen_t len, char* file_name, int window_size) { 
     char buf[MAXLINE]; 
     char sendline[MAXLINE];
     msg_hdr_t *msg_hdr;
-    
     Connect(sockfd, (SA *)srv_addr, len);
-    //TODO: Print out server info calling getpeername
-    
+
+    print_srvr_addr (sockfd);
     write(sockfd, file_name, strlen(file_name));
     
     /* Second Hand-shake receive new connection port from server
@@ -83,7 +107,7 @@ cli_func (int sockfd, SA *srv_addr, socklen_t len, char* file_name, int window_s
      */
     read(sockfd, buf, MAXLINE);
     
-    printf("\nSecond hand-shake. Port number received: %d\n", ntohs(atoi(buf)));
+    printf("Second hand-shake. ");
 
     ((struct sockaddr_in *)srv_addr)->sin_port = htons(atoi(buf));
    
@@ -98,6 +122,8 @@ cli_func (int sockfd, SA *srv_addr, socklen_t len, char* file_name, int window_s
     /* Third Hand shake */
     Write(sockfd, (void *) msg_hdr, sizeof(msg_hdr_t));
     
+    printf ("New server port: ");
+    print_srvr_addr (sockfd);
     /* Start reading data from client */
     r_win = r_window_init(); 
     

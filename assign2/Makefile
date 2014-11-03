@@ -1,6 +1,6 @@
 CC = gcc
 
-LIBS =  -lresolv -lnsl -lpthread\
+LIBS =  -lresolv -lnsl -lpthread -lm\
 	./Stevens/libunp.a
 
 FLAGS =  -g -O1

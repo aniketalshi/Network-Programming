@@ -3,6 +3,7 @@
 #include "unprtt.h"
 #include <setjmp.h>
 #include <assert.h>
+#include <math.h>
 
 #define PRINT_S(a, c)  print_s((snd_wndw_t *)a, (int) c)
 #define PRINT_R(a, c)  print_r((recv_wndw_t *)a, (int) c)
@@ -39,6 +40,40 @@ print_r (recv_wndw_t *s, int count) {
         printf("\n Pckt %d, Seq num: %d", iter, s->buff[iter].entry->seq_num);
         iter = (iter + 1)%RECV_WINDOW_SIZE;
     }
+}
+
+/* To print the entire sender window. */
+
+void
+print_s_win (snd_wndw_t *s) {
+    int iter;
+    for (iter = 0; iter < SEND_WINDOW_SIZE; iter++) {
+        
+        if (s->buff[iter].is_valid) {
+            printf ("| %d ", s->buff[iter].entry->seq_num);
+        }
+        else {
+            printf ("|  X  ");
+        }
+    }
+    printf ("|\n");
+}
+
+
+/* To print the entire receiver window. */
+void
+print_r_win (recv_wndw_t *s) {
+    int iter;
+    for (iter = 0; iter < RECV_WINDOW_SIZE; iter++) {
+        
+        if (s->buff[iter].is_valid) {
+            printf ("| %d ", s->buff[iter].entry->seq_num);
+        }
+        else {
+            printf ("|  X  ");
+        }
+    }
+    printf ("|\n");
 }
 
 /* To get next seq num */
@@ -247,11 +282,17 @@ r_rem_window (struct recv_window *recv_wndw) {
     return 0;
 }
 
+int 
+get_sleep_secs () {
+    int sleep = -1 * (cli_params.read_rate * log (drand48()));
+    //printf ("Consumer sleeping for %d ms.\n", sleep);
+    return sleep;
+}
 
 void* consumer_func () {
     char buf[CHUNK_SIZE+1];
     memset(buf, 0, sizeof(buf));
-    int len = 0;
+    int len = 0, flag = 0;
    
     int out_fd = open (OUTFILE, O_WRONLY | O_CREAT | O_TRUNC);
     
@@ -261,9 +302,15 @@ void* consumer_func () {
     
     /* iterate from tail to last ack and remove them from buff */
     while (should_terminate == 0) {
-        while ( r_win->buff[r_win->win_tail].is_valid == 1 &&
+        flag = 0;
+        usleep (get_sleep_secs () * 1000);
+        
+        while (r_win->buff[r_win->win_tail].is_valid == 1 &&
                 r_win->buff[r_win->win_tail].entry->seq_num < r_win->exp_seq) {
-            
+            if (!flag) {
+                printf ("Consumer read: ");
+            }
+            flag = 1;
             len = r_win->buff[r_win->win_tail].entry->data_len;
             
             // read the entry at tail
@@ -271,12 +318,16 @@ void* consumer_func () {
                 fprintf(stderr, "No content in packet to be read");
                 break;
             }
-            printf ("Consumer read: %d\n",  r_win->buff[r_win->win_tail].entry->seq_num);   
+            printf ("%d\t",  r_win->buff[r_win->win_tail].entry->seq_num);   
             // write to the outfile
             write(out_fd, r_win->buff[r_win->win_tail].entry->body, len);
             
             // remove entry from tail
             r_rem_window(r_win);
+        }
+        if (flag){
+            printf ("\n"); 
+            //print_r_win (r_win);
         }
     }
     
@@ -493,7 +544,7 @@ send:
                                                 recv_msg_hdr.seq_num, recv_msg_hdr.win_size);
             
             /* If type of message is ACK, check seq num 
-            *  TODO: if same ack no is received increment ackcnt
+            *        if same ack no is received increment ackcnt
             *        if it reaches 3, we can do fast retransmit 
             */
             if (recv_msg_hdr.msg_type ==  __MSG_ACK &&
@@ -688,6 +739,7 @@ send_packets:
         //if (snd_wndw->cwind >= snd_wndw->ssthresh)
 
         //PRINT_BUF(snd_wndw, SEND_BUF, count);
+        print_s_win(snd_wndw);
         
         /* Handle the timer signal, and retransmit. */
         if (sigsetjmp(jmp, 1) != 0) {
@@ -852,7 +904,7 @@ receiving_func (void* data) {
             send_fin_ack(sockfd);
             printf("\n Client Terminating"); 
             
-            // TODO: handle this more gracefully.
+            
             should_terminate = 1;
 	    break;
 	}
@@ -868,6 +920,7 @@ receiving_func (void* data) {
             r_win_pckt->body     = body;
 
             r_add_window (sockfd, r_win, r_win_pckt);    
+            print_r_win (r_win);
         }
 
         // If probe packet is received
@@ -881,15 +934,14 @@ receiving_func (void* data) {
             } else {
                 winsize = RECV_WINDOW_SIZE;
             }
-
-            printf ("\n Probe received %d\n", winsize);
+                
+            printf ("\n Probe received, sending winsize: %d\n", winsize);
+            //print_r_win (r_win);
             send_ack(sockfd, get_hdr(__MSG_PROBE_RESP, 0, winsize)); 
             
             pthread_mutex_unlock(&r_win->mut);
         }
     }
     
-    // TODO: Consumer func works here without threading
-    //consumer_func();
     pthread_exit(NULL);
 }

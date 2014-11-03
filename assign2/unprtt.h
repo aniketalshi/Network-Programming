@@ -12,8 +12,8 @@ struct rtt_info {
   uint32_t	rtt_base;	/* # sec since 1/1/1970 at start */
 };
 
-#define	RTT_RXTMIN      2000	/* min retransmit timeout value, in seconds */
-#define	RTT_RXTMAX      40000	/* max retransmit timeout value, in seconds */
+#define	RTT_RXTMIN      1000	/* min retransmit timeout value, in seconds */
+#define	RTT_RXTMAX      3000	/* max retransmit timeout value, in seconds */
 #define	RTT_MAXNREXMT 	12	/* max # times to retransmit */
 
 				/* function prototypes */

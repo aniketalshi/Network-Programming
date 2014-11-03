@@ -53,12 +53,14 @@ send_file (conn_struct_t *conn, char *filename, int client_win_size) {
     printf("\n==========Starting File Transfer =============\n");
     
     /* read chunks of file */
-    while((n_bytes = read (file_d, send_buf, CHUNK_SIZE * 10)) > 0) {
-        printf("\n read %d bytes\n", n_bytes); 
-        
-        sending_func(conn->conn_sockfd, (void *)send_buf, n_bytes, client_win_size);
-	memset(send_buf, 0, CHUNK_SIZE * 10);
-    }
+    //while((n_bytes = read (file_d, send_buf, CHUNK_SIZE * 10)) > 0) {
+    //    printf("\n read %d bytes\n", n_bytes); 
+    //    
+    //    sending_func(conn->conn_sockfd, (void *)send_buf, n_bytes, client_win_size);
+    //    memset(send_buf, 0, CHUNK_SIZE * 10);
+    //}
+
+    sending_func_new(conn->conn_sockfd, file_d);
     /* send the fin packet */ 
     send_fin (conn->conn_sockfd, (void *)send_buf);
     printf("\n==========File Transfer complete =============\n");

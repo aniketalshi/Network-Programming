@@ -24,17 +24,28 @@ typedef struct window_pckt {
     msg_hdr_t*     header;      // header of packet
 }wndw_pckt_t;
 
+typedef struct buff_entry { 
+    int is_valid;
+    wndw_pckt_t *entry;
+}buff_entry_t;
+
+typedef struct sender_window {
+    buff_entry_t buff [SEND_WINDOW_SIZE]; // Circular buff
+    int win_head;                         // Head of buff
+    int win_tail;                         // Tail of buff 
+    int free_sz;                          // free slots avail
+    int cwind;                            // congestion window
+    int ssthresh;                         // ssthreshold
+}snd_wndw_t;
+
+/*
 typedef struct sender_window {
     wndw_pckt_t *buff [SEND_WINDOW_SIZE]; // Circular buff
     int win_head;                         // Head of buff
     int win_tail;                         // Tail of buff 
     int free_sz;                          // free slots avail
 }snd_wndw_t;
-
-typedef struct buff_entry {
-    int is_valid;
-    wndw_pckt_t *entry;
-}buff_entry_t;
+*/
 
 typedef struct recv_window {
     buff_entry_t buff [RECV_WINDOW_SIZE]; // Circular buff
@@ -61,7 +72,8 @@ int  s_rem_window   (struct sender_window *snd_wndw);  /* remove pckt from send 
 int  r_rem_window   (struct recv_window *recv_wndw);   /* remove pckt from recv window */
 
 /* Main sending logic */
-void sending_func (int sockfd, void *read_buf, int bytes_rem, int sending_win_size);
+//void sending_func (int sockfd, void *read_buf, int bytes_rem, int sending_win_size);
+void sending_func_new (int sockfd, int file_d);
 
 /* To get next seq num */
 long int get_seq_num ();

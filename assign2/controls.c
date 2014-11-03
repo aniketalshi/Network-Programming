@@ -4,11 +4,11 @@
 #include <setjmp.h>
 #include <assert.h>
 
-#define PRINT_S(a)  print_s((snd_wndw_t *)a)
-#define PRINT_R(a)  print_r((recv_wndw_t *)a)
+#define PRINT_S(a, c)  print_s((snd_wndw_t *)a, (int) c)
+#define PRINT_R(a, c)  print_r((recv_wndw_t *)a, (int) c)
 
-#define PRINT_BUF(a,b) do {if((b) == SEND_BUF)  PRINT_S(a);\
-                           if((b) == RECV_BUF)  PRINT_R(a);\
+#define PRINT_BUF(a,b,c) do {if((b) == SEND_BUF)  PRINT_S(a, c);\
+                             if((b) == RECV_BUF)  PRINT_R(a, c);\
                           } while(0)
 
 int            max_sending_win_size;
@@ -21,18 +21,21 @@ void sigalarm_handler(int signo){
 }
 
 void
-print_s (snd_wndw_t *s) {
-    int iter;
-    for (iter = s->win_tail; iter < s->win_head;) {
-        printf("\n SPckt %d, Seq num: %d", iter, s->buff[iter]->seq_num);
+print_s (snd_wndw_t *s, int count) {
+    int iter, c = 0;
+    printf("Packets in Sending Window");
+    for (iter = s->win_tail; c < count; c++) {
+        assert(s->buff[iter].is_valid);
+        printf("\t %d", s->buff[iter].entry->seq_num);
         iter = (iter + 1)%SEND_WINDOW_SIZE;
     }
+    printf("\n");
 }
 
 void
-print_r (recv_wndw_t *s) {
-    int iter;
-    for (iter = s->win_tail; iter < s->win_head; ) {
+print_r (recv_wndw_t *s, int count) {
+    int iter, c = 0;
+    for (iter = s->win_tail; c < count; ) {
         printf("\n Pckt %d, Seq num: %d", iter, s->buff[iter].entry->seq_num);
         iter = (iter + 1)%RECV_WINDOW_SIZE;
     }
@@ -49,13 +52,14 @@ get_seq_num() {
 /* sending window init */
 snd_wndw_t *
 s_window_init () {
-    snd_wndw_t *snd_wndw = (snd_wndw_t *)malloc(sizeof(snd_wndw_t));
+    snd_wndw_t *snd_wndw = (snd_wndw_t *)calloc(1, sizeof(snd_wndw_t));
     
-    memset (snd_wndw->buff, 0, (size_t)max_sending_win_size);
     snd_wndw->win_head = 0;
     snd_wndw->win_tail = 0;
-    //TODO: initialise with receiving sending window size?
+    //TODO: initialize with receiving sending window size?
     snd_wndw->free_sz  = SEND_WINDOW_SIZE;
+    snd_wndw->cwind    = 1;
+    snd_wndw->ssthresh = SEND_WINDOW_SIZE/2;
 
     return snd_wndw;
 }
@@ -78,6 +82,7 @@ r_window_init () {
 }
 
 /* to add a new pckt to window */
+/*
 int 
 s_add_window (struct sender_window *snd_wndw, struct window_pckt *pckt) {
     
@@ -90,7 +95,7 @@ s_add_window (struct sender_window *snd_wndw, struct window_pckt *pckt) {
     }
     return 0;
 }
-
+*/
 void
 send_ack_func(int sockfd, recv_wndw_t *recv_wndw, unsigned long ts) {
     int win_size = 0; 
@@ -204,6 +209,7 @@ end:
 
 
 /* remove pckt from sending window */
+/*
 int 
 s_rem_window (struct sender_window *snd_wndw) {
     if (snd_wndw->free_sz < RECV_WINDOW_SIZE) {
@@ -217,7 +223,7 @@ s_rem_window (struct sender_window *snd_wndw) {
     }
     return 0;
 }
-
+*/
 /* remove pckt from recv window */
 int 
 r_rem_window (struct recv_window *recv_wndw) {
@@ -255,7 +261,6 @@ void* consumer_func () {
     
     /* iterate from tail to last ack and remove them from buff */
     while (should_terminate == 0) {
-        sleep(5);
         while ( r_win->buff[r_win->win_tail].is_valid == 1 &&
                 r_win->buff[r_win->win_tail].entry->seq_num < r_win->exp_seq) {
             
@@ -314,15 +319,15 @@ send_probe (int sockfd, int *client_win_size) {
 
         recvvec[0].iov_len   = sizeof(msg_hdr_t);
         recvvec[0].iov_base  = (void *)&recv_msg_hdr;
-
+        usleep(500000);
         while((n_bytes = recvmsg(sockfd, &pcktmsg, 0)) < 0) {
             if (errno == EAGAIN || errno == EWOULDBLOCK)
                 break;    
         }
         
         
-        if (recv_msg_hdr.msg_type ==  __MSG_PROBE_RESP && 
-                                    recv_msg_hdr.win_size > 0) {
+        if ((recv_msg_hdr.msg_type ==  __MSG_PROBE_RESP) && 
+                                    (recv_msg_hdr.win_size > 0)) {
             printf ("\n probing client");
             *client_win_size = recv_msg_hdr.win_size;
             break;
@@ -341,7 +346,7 @@ send_probe (int sockfd, int *client_win_size) {
     return 1;
 }
 
-
+#if 0
 /* Function to handle sending logic */
 void
 sending_func (int sockfd, void *read_buf, int bytes_rem, int client_win_size_s) {
@@ -549,6 +554,261 @@ process_acks:
     }
     free(snd_wndw);
 }
+#endif
+
+void 
+sending_func_new (int sockfd, int file_d) {
+
+    static exp_ack = 12, adv_window_size = 10;
+    snd_wndw_t *snd_wndw = s_window_init();
+    int seqnum, offset = 0, latest_ack = 0, iter = 0, bytes_to_copy = 0;
+    
+    char *read_buf = (char *)calloc(1, 10 * CHUNK_SIZE); 
+    int n_bytes, bytes_rem = 0, fast_ret_flag = 0;
+    static threshval = 0, window = 0;
+    
+    struct rtt_info rtt_s;
+    struct msghdr pcktmsg;
+    struct iovec recvvec[1];
+    msg_hdr_t recv_msg_hdr;
+    
+    signal (SIGALRM, sigalarm_handler);
+    memset (&rtt_s, 0, sizeof(rtt_s));
+    rtt_init (&rtt_s);
+    
+    /* Initialize the retransmit count to 0. */
+    rtt_newpack (&rtt_s);
+    int count = 0, done_read_flag = 0;
+    
+    
+send_packets: 
+        //printf("\n count :%d", count);
+        // if adv_window_size is zero, probe logic will kick in
+        
+        if (adv_window_size == 0) {
+            if(send_probe(sockfd, &adv_window_size) !=  1) {
+                perror("Error in probing client\n");
+            }
+        }
+        
+        int ack_cnt = 0;
+        //printf("%d", bytes_rem);
+        // start from tail add upto cwnd and send 
+        printf("cwindow size: %d , adv window size %d, sending Packets with seq num:", 
+                                                            snd_wndw->cwind, adv_window_size);
+        
+         for (iter = snd_wndw->win_tail, count = 0; 
+                                count < min(snd_wndw->cwind, adv_window_size);) {
+            
+            printf("\n entering for loop\n");
+            // if entry is valid and this is not fast retransmit then skip it
+            if (snd_wndw->buff[iter].is_valid == 1 && fast_ret_flag == 0) {
+                iter = (iter + 1) % SEND_WINDOW_SIZE;
+                count++;
+                //printf("\ncoming here\n");
+                continue;
+            }
+            
+            // if entry is valid and ret flag is set, send
+            if (snd_wndw->buff[iter].is_valid == 1 && fast_ret_flag == 1) {
+                
+                if (send_packet(sockfd, snd_wndw->buff[iter].entry->header, 
+                                        snd_wndw->buff[iter].entry->body, 
+                                        snd_wndw->buff[iter].entry->data_len) < 0) {
+                    fprintf(stderr, "Error sending packet");	
+                    return;
+                }
+                printf("\t %d", snd_wndw->buff[iter].entry->seq_num);
+
+                count++;
+                iter = (iter + 1) % SEND_WINDOW_SIZE;
+                continue;
+            }
+
+            // if entry is not valid, insert 
+            if (snd_wndw->buff[iter].is_valid == 0 && done_read_flag == 0) {
+   
+                wndw_pckt_t *wndw_pckt = (wndw_pckt_t *)calloc(1, sizeof(wndw_pckt_t));
+                char *buf_temp         = (char *)calloc(1, CHUNK_SIZE + 1);
+                
+                bytes_to_copy = min(bytes_rem, CHUNK_SIZE);
+                bytes_rem    -= bytes_to_copy;
+                
+                if((bytes_rem = read (file_d, read_buf, CHUNK_SIZE)) <= 0) {
+
+                    if (bytes_rem == 0) {
+                        done_read_flag = 1;
+                        if (snd_wndw->buff[snd_wndw->win_tail].is_valid == 0){
+                            return;
+                        }
+                        break;
+                    }
+                    
+                    fprintf(stderr, "error reading file");
+                    return;
+                }
+                
+                if (bytes_rem < CHUNK_SIZE) {
+                    done_read_flag = 1;
+                }
+                
+                memcpy(buf_temp, read_buf, bytes_to_copy);
+                offset += bytes_to_copy;
+                    
+                seqnum              = get_seq_num();
+                wndw_pckt->seq_num  = seqnum;
+                wndw_pckt->sent_cnt = 0;
+                wndw_pckt->body     = buf_temp;
+                wndw_pckt->data_len = bytes_to_copy;
+                wndw_pckt->header   = get_hdr(__MSG_FILE_DATA, seqnum, 0);
+                
+                snd_wndw->buff[iter].is_valid = 1;
+                snd_wndw->buff[iter].entry    = wndw_pckt;
+            
+            
+                if (send_packet(sockfd, snd_wndw->buff[iter].entry->header, 
+                                        snd_wndw->buff[iter].entry->body, 
+                                        snd_wndw->buff[iter].entry->data_len) < 0) {
+                    fprintf(stderr, "Error sending packet");	
+                    return;
+                }
+                printf("\t %d", snd_wndw->buff[iter].entry->seq_num);
+
+                count++;
+                iter = (iter + 1) % SEND_WINDOW_SIZE;
+            }
+
+            if (snd_wndw->buff[snd_wndw->win_tail].is_valid == 0 && done_read_flag == 1) {
+                return;
+            }
+        }
+        printf("\n"); 
+        fast_ret_flag = 0;
+        
+        //if (snd_wndw->cwind >= snd_wndw->ssthresh)
+
+        //PRINT_BUF(snd_wndw, SEND_BUF, count);
+        
+        /* Handle the timer signal, and retransmit. */
+        if (sigsetjmp(jmp, 1) != 0) {
+            
+            /* Check if maximum retransmits have already been sent. */
+            if (rtt_timeout(&rtt_s) == 0) {
+                printf("Time out. Retransmitting\n");
+                rtt_start_timer (rtt_start(&rtt_s));
+                
+                // set congestion window size to 1
+                snd_wndw->ssthresh = snd_wndw->cwind / 2;
+                snd_wndw->cwind = 1;
+                threshval = 0;
+                window    = 0;
+                fast_ret_flag = 1;
+                goto send_packets;
+            } else{
+                /* Maximum number of retransmits sent; give up. */
+                printf("Client not responding. Terminating connection\n");
+                return;
+            }
+        }
+        
+        /* Start the timer. */
+        rtt_start_timer (rtt_start(&rtt_s));
+        
+        // recv acks 
+        /* if ack received is greater than or equal to expected ack, break
+         * else count num of acks recvd. if equal to 3, do fast retransmit
+         */
+        while(1) {
+
+            memset (&pcktmsg, 0, sizeof(struct msghdr));
+            memset (&recv_msg_hdr, 0, sizeof(msg_hdr_t));
+            
+            pcktmsg.msg_name     = NULL;
+            pcktmsg.msg_namelen  = 0;
+            pcktmsg.msg_iov      = recvvec;
+            pcktmsg.msg_iovlen   = 1;
+            
+            recvvec[0].iov_len   = sizeof(msg_hdr_t);
+            recvvec[0].iov_base  = (void *)&recv_msg_hdr;
+            
+            n_bytes = recvmsg(sockfd, &pcktmsg, 0);
+            
+            if (n_bytes <= 0) {
+                printf ("Connection Terminated\n");
+                break; 
+            }
+            
+            adv_window_size = recv_msg_hdr.win_size;
+            printf("Rcvd ACK. Seq Num : %d, advertised win_size %d\n", 
+                                      recv_msg_hdr.seq_num, recv_msg_hdr.win_size);
+            
+            assert(snd_wndw->buff[snd_wndw->win_tail].is_valid);
+            
+            // expected seq num is one greater than seq num of tail
+            if (recv_msg_hdr.seq_num >= 
+                        (snd_wndw->buff[snd_wndw->win_tail].entry->seq_num + 1)) {
+                
+                latest_ack = recv_msg_hdr.seq_num;
+                break;
+            } else {
+                ++ack_cnt;
+                if (ack_cnt == 3) {
+                    printf("\n Received ACK 3 times, doing fast retransmit\n");
+                    fast_ret_flag = 1; 
+                    //stop timer
+                    rtt_start_timer (0);
+
+                    // half the congestion window
+                    snd_wndw->cwind /= 2;
+                    snd_wndw->ssthresh = snd_wndw->cwind;
+                    
+                    goto send_packets;
+                }
+            }
+        }
+        
+        //stop timer
+        rtt_start_timer (0);
+ 
+        /* if expected ack is recvd, delete from tail upto ack no 
+        *  if not and timed out, reset sstresh to cwind/2 and cwind to 1
+        */
+        while(1) {
+            /* if entry is not valid or if seq num is greater than or equal to latest
+             * received ack seq no, break */
+            iter = snd_wndw->win_tail;
+            if ((snd_wndw->buff[iter].is_valid == 0) ||
+                ((snd_wndw->buff[iter].is_valid == 1) && 
+                        snd_wndw->buff[iter].entry->seq_num >= latest_ack)) {
+                break;
+            }
+
+            snd_wndw->buff[iter].is_valid = 0;
+            snd_wndw->buff[iter].entry    = NULL;
+            //if(snd_wndw->cwind >= snd_wndw->ssthresh) {
+            //    
+            //    if (threshval == 0 || (window == threshval)) {
+            //        window           = 0;
+            //        threshval        = snd_wndw->cwind;
+            //        
+            //        if(window == threshval) 
+            //            snd_wndw->cwind += 1;
+            //    }
+            //    window++;
+            //} else {
+            //    snd_wndw->cwind += 1;
+            //}
+            snd_wndw->cwind += 1;
+            snd_wndw->win_tail   = (snd_wndw->win_tail + 1) % RECV_WINDOW_SIZE;
+            count--;
+        }
+        
+        if (done_read_flag && count == 0)
+            return;
+
+        goto send_packets;
+    
+}
 
 int
 drop_probability(){
@@ -599,8 +859,8 @@ receiving_func (void* data) {
         
         // Insert the packet in receiving window
 	if (recv_msg_hdr->msg_type ==  __MSG_FILE_DATA) {
-            //printf("\n Data Seq Num %d, Timestamp %ld\n", 
-            //                recv_msg_hdr->seq_num, recv_msg_hdr->timestamp);
+            printf("\n Data Seq Num %d, Timestamp %ld\n", 
+                            recv_msg_hdr->seq_num, recv_msg_hdr->timestamp);
             
             r_win_pckt->seq_num  = recv_msg_hdr->seq_num;
             r_win_pckt->time_st  = recv_msg_hdr->timestamp;
@@ -612,12 +872,7 @@ receiving_func (void* data) {
 
         // If probe packet is received
 	if (recv_msg_hdr->msg_type ==  __MSG_PROBE) {
-            if (flag_1 == 1) {
-                flag_1 = 0;
-                continue;
-            }
-
-
+            
             pthread_mutex_lock(&r_win->mut);
             
             if (r_win->buff[r_win->win_tail].is_valid == 1) {

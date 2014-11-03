@@ -103,20 +103,14 @@ DESIGN
 
     Fin-Ack
     -------
-        In order to handle the case when the server FIN packet is dropped,
-        the server sends FIN 
-
-    File Not Found
-    --------------
-        The server sends FIN when it does not find the file client looking
-        for. The client comes to know about this error if the first packet
-        it receives is FIN.
-
-->CLIENT
-  ------
-
-    
-
+	Step 1: Server sends FIN, waits for ack
+	Step 2: Client sends FIN_ACK
+	Step 3: Client wait for 3 secs, if in meanwhle it receives FIN,
+		it sends FIN_ACK again. It does this for maximum 3 times, then
+		shutdowns gracefully.
+	Step 4: If server recives fin_ack, exits gracefully
+	
+        
 = MODIFICATIONS
   -------------
 
@@ -133,5 +127,11 @@ DESIGN
     1.  The client drops the packets received with some probability received
         from client.in file and the consumer sleeps for random ms.
 
+structures:
+------------
+
+sock_struct_t : stores mapping between sockfd, ip addr
+conn_struct_t: stores info regarding current connection, also stores pid.
+	       when child exits, parent deletes the conn_struct
 
 

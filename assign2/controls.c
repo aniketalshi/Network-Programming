@@ -724,7 +724,7 @@ send_packets:
         if (sigsetjmp(jmp, 1) != 0) {
             
             /* Check if maximum retransmits have already been sent. */
-            if (rtt_timeout(&rtt_s) == 0) {
+            if (rtt_timeout(&rtt_s, 0) == 0) {
                 printf("Time out. Retransmitting\n");
                 rtt_start_timer (rtt_start(&rtt_s));
                 
@@ -782,6 +782,7 @@ send_packets:
                         (snd_wndw->buff[snd_wndw->win_tail].entry->seq_num + 1)) {
                 
                 latest_ack = recv_msg_hdr.seq_num;
+		rtt_stop(&rtt_s, snd_wndw->buff[snd_wndw->win_tail].entry->time_st);
                 break;
             } else {
                 ++ack_cnt;

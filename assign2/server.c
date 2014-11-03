@@ -152,7 +152,7 @@ service_client_req(sock_struct_t *curr,
     if (sigsetjmp(jmp, 1) != 0) {
         
         /* Check if maximum retransmits have already been sent. */
-        if (rtt_timeout( &rtt_s ) == 0) {
+        if (rtt_timeout( &rtt_s, 0 ) == 0) {
             printf("\n\n No communication from client; Sending packet again.\n");
             rtt_start_timer( 3000 );
             
